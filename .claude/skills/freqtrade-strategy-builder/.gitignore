@@ -1,0 +1,28 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+
+# Freqtrade runtime and private data
+ft_userdata/
+user_data/config.json
+user_data/config-private*.json
+user_data/data/
+user_data/logs/
+user_data/backtest_results/
+user_data/hyperopt_results/
+user_data/tradesv3*.sqlite*
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/
+*.swp
+

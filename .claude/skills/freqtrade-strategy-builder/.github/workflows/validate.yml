@@ -1,0 +1,34 @@
+name: Validate
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Check skill frontmatter
+        run: |
+          test "$(head -n 1 SKILL.md)" = "---"
+          grep -q '^name: freqtrade-strategy-builder$' SKILL.md
+          grep -q '^description:' SKILL.md
+
+      - name: Check shell syntax
+        run: bash -n scripts/*.sh
+
+      - name: Run smoke tests
+        run: |
+          chmod +x scripts/*.sh
+          ./scripts/smoke_test.sh
