@@ -60,9 +60,41 @@ def test_history_reads_completed_candidate_runs(tmp_path):
 
     compact = compact_history(records)
 
-    assert compact[0]["feedback"]["classification"] == "INCONCLUSIVE"
+    assert compact[0]["legacy_research_feedback"]["classification"] == (
+        "INCONCLUSIVE"
+    )
+    assert compact[0]["evidence_report"] is None
+    assert "research_decisions" not in compact[0]
     assert compact[0]["bootstrap_robust_positive"] is False
     assert compact[0]["incremental"]["auc"] == 0.004
+
+
+def test_history_exposes_new_evidence_without_synthesizing_decision(tmp_path):
+    run_dir = tmp_path / "evidence"
+    run_dir.mkdir()
+    evidence = {
+        "schema_version": 1,
+        "run_id": "evidence",
+        "candidate": {"name": "alpha", "source_hash": "a" * 64},
+        "evaluation_context": {"incremental_status": "not_evaluated"},
+        "factor_evaluation": {},
+        "model_evaluation": {"model": {"auc": 0.51}},
+        "incremental_evaluation": None,
+    }
+    (run_dir / "summary.json").write_text(json.dumps({
+        "run_id": "evidence",
+        "status": "completed",
+        "candidate": {"name": "alpha", "source_hash": "a" * 64},
+        "factor_evaluation": {},
+        "incremental_evaluation": None,
+        "evidence_report": evidence,
+    }), encoding="utf-8")
+
+    compact = compact_history(read_history(tmp_path))
+
+    assert compact[0]["evidence_report"] == evidence
+    assert compact[0]["legacy_research_feedback"] is None
+    assert "research_decisions" not in compact[0]
 
 
 def test_history_skips_failed_runs(tmp_path):

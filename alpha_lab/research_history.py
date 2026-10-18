@@ -12,7 +12,7 @@ def read_history(
     limit: int = 20,
     candidate_name: str | None = None,
 ) -> list[dict]:
-    """读取最近的成功实验，提取 Agent 所需的研究反馈。"""
+    """读取最近的成功实验，并区分客观证据与旧策略反馈。"""
     if limit < 1:
         raise ValueError("limit must be positive")
 
@@ -71,7 +71,8 @@ def read_history(
             },
             "factor_overall": candidate_factor.get("overall"),
             "incremental_evaluation": raw.get("incremental_evaluation"),
-            "research_feedback": raw.get("research_feedback"),
+            "evidence_report": raw.get("evidence_report"),
+            "legacy_research_feedback": raw.get("research_feedback"),
             "report_path": str(path),
         })
 
@@ -105,7 +106,8 @@ def compact_history(records: list[dict]) -> list[dict]:
             "bootstrap_robust_positive": stability.get(
                 "robust_positive"
             ),
-            "feedback": record["research_feedback"],
+            "evidence_report": record["evidence_report"],
+            "legacy_research_feedback": record["legacy_research_feedback"],
             "report_path": record["report_path"],
         })
 
