@@ -170,6 +170,15 @@ def test_incremental_calls_factor_similarity(monkeypatch):
 
     # 6. 区间包含零，不应判断为稳健正增量
     assert result["stability"]["robust_positive"] is False
+    assert result["sample_alignment"] == {
+        "common_eligible_rows": 100,
+        "prediction_rows": 10,
+        "first_prediction_time": "2023-01-01T00:00:00+00:00",
+        "last_prediction_time": "2023-01-01T09:00:00+00:00",
+        "matched_columns": [
+            "open_time", "target", "train_time", "train_size"
+        ],
+    }
 
 
 def test_bootstrap_block_sensitivity(monkeypatch):

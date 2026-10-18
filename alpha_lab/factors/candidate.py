@@ -31,6 +31,15 @@ class CandidateSpec:
     source_path: Path
 
 
+@dataclass(frozen=True)
+class CandidateSnapshot:
+    candidate_dir: Path
+    spec: CandidateSpec
+    source_relative_path: str
+    manifest_relative_path: str
+    manifest_hash: str
+
+
 def submit_candidate(
     candidate_dir: str | Path,
 ) -> CandidateSpec:
@@ -140,4 +149,63 @@ def submit_candidate(
         prediction_horizon=horizon,
         source_hash=hashlib.sha256(source_bytes).hexdigest(),
         source_path=source_path,
+    )
+
+
+def snapshot_candidate(
+    candidate_dir: str | Path,
+    run_dir: str | Path,
+    *,
+    expected: CandidateSpec | None = None,
+) -> CandidateSnapshot:
+    """Copy one validated candidate into an immutable run-local input tree."""
+    source_dir = Path(candidate_dir).resolve(strict=True)
+    before = expected or submit_candidate(source_dir)
+    current = submit_candidate(source_dir)
+
+    if current != before:
+        raise ValueError("Candidate changed before snapshot")
+
+    source_bytes = current.source_path.read_bytes()
+    manifest_bytes = (source_dir / "candidate.json").read_bytes()
+    if hashlib.sha256(source_bytes).hexdigest() != before.source_hash:
+        raise ValueError("Candidate source changed before snapshot")
+
+    run_dir = Path(run_dir)
+    snapshot_dir = run_dir / "candidate_snapshot" / before.name
+    snapshot_dir.mkdir(parents=True, exist_ok=False)
+
+    files = {
+        "factor.py": source_bytes,
+        "candidate.json": manifest_bytes,
+    }
+    for name, content in files.items():
+        temporary = snapshot_dir / f".{name}.tmp"
+        destination = snapshot_dir / name
+        temporary.write_bytes(content)
+        temporary.replace(destination)
+
+    archived = submit_candidate(snapshot_dir)
+    if archived.source_hash != before.source_hash:
+        raise ValueError("Candidate snapshot hash mismatch")
+    comparable = (
+        "name",
+        "hypothesis",
+        "parameters",
+        "required_columns",
+        "prediction_horizon",
+    )
+    if any(getattr(archived, key) != getattr(before, key) for key in comparable):
+        raise ValueError("Candidate snapshot manifest mismatch")
+
+    return CandidateSnapshot(
+        candidate_dir=snapshot_dir,
+        spec=archived,
+        source_relative_path=(
+            Path("candidate_snapshot") / before.name / "factor.py"
+        ).as_posix(),
+        manifest_relative_path=(
+            Path("candidate_snapshot") / before.name / "candidate.json"
+        ).as_posix(),
+        manifest_hash=hashlib.sha256(manifest_bytes).hexdigest(),
     )

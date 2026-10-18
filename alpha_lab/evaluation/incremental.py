@@ -186,6 +186,16 @@ def evaluate_incremental(
                     f"Prediction mismatch: "
                     f"{group_name}.{column}"
                 )
+
+    sample_alignment = {
+        "common_eligible_rows": int(common_valid.sum()),
+        "prediction_rows": len(anchor),
+        "first_prediction_time": anchor["open_time"].iloc[0].isoformat(),
+        "last_prediction_time": anchor["open_time"].iloc[-1].isoformat(),
+        "matched_columns": [
+            "open_time", "target", "train_time", "train_size"
+        ],
+    }
     # 预测概率列需要与 ModelEvaluator 的实际输出一致
     probability_candidates = (
         "probability",
@@ -271,6 +281,7 @@ def evaluate_incremental(
             "robust_positive": robust_positive,
         },
         "n": len(anchor),
+        "sample_alignment": sample_alignment,
     }
 
     if return_model_results:

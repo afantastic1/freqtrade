@@ -14,6 +14,14 @@ MIN_DATE = pd.Timestamp("2022-01-01", tz="UTC")
 MAX_DATE = pd.Timestamp("2025-01-01", tz="UTC")
 
 
+def default_baseline_factors() -> tuple[FactorSpec, ...]:
+    """Return the stable baseline used by candidate research commands."""
+    return (
+        FactorSpec("momentum", {"periods": 4}),
+        FactorSpec("momentum", {"periods": 12}),
+    )
+
+
 @dataclass(frozen=True)
 class ExperimentConfig:
     symbol: str
@@ -27,6 +35,7 @@ class ExperimentConfig:
     retrain_months: int = 1
     test_start: str = "2023-01-01"
     test_end: str = "2025-01-01"
+    baseline_source: str = "experiment_config"
 
     def __post_init__(self):
         if self.symbol != "BTC/USDT:USDT":
@@ -93,6 +102,7 @@ class ExperimentConfig:
             "horizon", "factors", "model",
             "train_months", "retrain_months",
             "test_start", "test_end",
+            "baseline_source",
         }
 
         unknown = set(raw) - allowed
