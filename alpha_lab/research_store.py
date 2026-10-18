@@ -2,6 +2,7 @@ import hashlib
 import json
 import math
 import sqlite3
+import uuid
 from pathlib import Path
 
 from alpha_lab.experiment_registry import utc_now
@@ -136,6 +137,23 @@ class ResearchStore:
                     FOREIGN KEY (candidate_id) REFERENCES candidates(candidate_id)
                 )
             """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS research_decisions (
+                    decision_id TEXT PRIMARY KEY,
+                    run_id TEXT NOT NULL,
+                    candidate_id TEXT NOT NULL,
+                    candidate_source_hash TEXT NOT NULL,
+                    supporting_evidence_json TEXT NOT NULL,
+                    opposing_evidence_json TEXT NOT NULL,
+                    conclusion_json TEXT NOT NULL,
+                    next_hypothesis_json TEXT NOT NULL,
+                    next_actions_json TEXT NOT NULL,
+                    agent_identity TEXT,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (run_id) REFERENCES experiments(run_id),
+                    FOREIGN KEY (candidate_id) REFERENCES candidates(candidate_id)
+                )
+            """)
             self._add_missing_columns(conn, "candidates", CANDIDATE_COLUMNS)
             self._add_missing_columns(conn, "evaluations", EVALUATION_COLUMNS)
             conn.execute(
@@ -153,6 +171,10 @@ class ResearchStore:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_experiments_finished_at "
                 "ON experiments(finished_at)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_research_decisions_run "
+                "ON research_decisions(run_id, created_at, decision_id)"
             )
             conn.execute("""
                 CREATE TRIGGER IF NOT EXISTS evaluations_parent_insert
@@ -406,6 +428,109 @@ class ResearchStore:
             )
 
         return self.show_run(run_id)
+
+    @staticmethod
+    def _decision_json(value, field: str) -> str:
+        try:
+            return _canonical_json(value)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError(f"{field} must be finite JSON data") from exc
+
+    @staticmethod
+    def _decision_from_row(row: sqlite3.Row) -> dict:
+        result = dict(row)
+        for field in (
+            "supporting_evidence",
+            "opposing_evidence",
+            "conclusion",
+            "next_hypothesis",
+            "next_actions",
+        ):
+            result[field] = json.loads(result.pop(f"{field}_json"))
+        return result
+
+    def create_decision(
+        self,
+        *,
+        run_id: str,
+        candidate_source_hash: str,
+        supporting_evidence: list | dict,
+        opposing_evidence: list | dict,
+        conclusion: str | dict,
+        next_hypothesis: str | dict,
+        next_actions: list | dict,
+        agent_identity: str | None = None,
+    ) -> dict:
+        payloads = {
+            "supporting_evidence_json": self._decision_json(
+                supporting_evidence, "supporting_evidence"
+            ),
+            "opposing_evidence_json": self._decision_json(
+                opposing_evidence, "opposing_evidence"
+            ),
+            "conclusion_json": self._decision_json(conclusion, "conclusion"),
+            "next_hypothesis_json": self._decision_json(
+                next_hypothesis, "next_hypothesis"
+            ),
+            "next_actions_json": self._decision_json(
+                next_actions, "next_actions"
+            ),
+        }
+        decision_id = str(uuid.uuid4())
+        created_at = utc_now()
+
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            identity = conn.execute("""
+                SELECT x.status, e.candidate_id, c.source_hash
+                FROM experiments x
+                LEFT JOIN evaluations e ON e.run_id = x.run_id
+                LEFT JOIN candidates c ON c.candidate_id = e.candidate_id
+                WHERE x.run_id = ?
+            """, (run_id,)).fetchone()
+            if identity is None:
+                raise ValueError(f"Unknown run_id: {run_id}")
+            if identity["status"] != "completed":
+                raise ValueError("Research Decision run is not completed")
+            if identity["candidate_id"] is None:
+                raise ValueError("Research Decision run is not indexed")
+            if identity["source_hash"] != candidate_source_hash:
+                raise ValueError("candidate source_hash does not match run")
+
+            conn.execute("""
+                INSERT INTO research_decisions (
+                    decision_id, run_id, candidate_id, candidate_source_hash,
+                    supporting_evidence_json, opposing_evidence_json,
+                    conclusion_json, next_hypothesis_json, next_actions_json,
+                    agent_identity, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                decision_id,
+                run_id,
+                identity["candidate_id"],
+                candidate_source_hash,
+                payloads["supporting_evidence_json"],
+                payloads["opposing_evidence_json"],
+                payloads["conclusion_json"],
+                payloads["next_hypothesis_json"],
+                payloads["next_actions_json"],
+                agent_identity,
+                created_at,
+            ))
+            row = conn.execute(
+                "SELECT * FROM research_decisions WHERE decision_id = ?",
+                (decision_id,),
+            ).fetchone()
+        return self._decision_from_row(row)
+
+    def list_decisions(self, run_id: str) -> list[dict]:
+        with self.connect() as conn:
+            rows = conn.execute("""
+                SELECT * FROM research_decisions
+                WHERE run_id = ?
+                ORDER BY created_at, decision_id
+            """, (run_id,)).fetchall()
+        return [self._decision_from_row(row) for row in rows]
 
     def show_run(self, run_id: str) -> dict | None:
         with self.connect() as conn:

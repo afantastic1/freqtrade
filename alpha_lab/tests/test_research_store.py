@@ -332,6 +332,106 @@ def test_concurrent_conflicting_index_cannot_mix_identity_and_metrics(tmp_path):
         assert row["candidate_auc"] == 0.53
 
 
+def decision_payload(run_id="decision-run", source_hash="a" * 64):
+    return {
+        "run_id": run_id,
+        "candidate_source_hash": source_hash,
+        "supporting_evidence": [
+            {"path": "incremental_evaluation.incremental.auc", "value": 0.001}
+        ],
+        "opposing_evidence": [
+            {"path": "incremental_evaluation.stability.robust_positive",
+             "value": False}
+        ],
+        "conclusion": "Evidence is mixed.",
+        "next_hypothesis": {"text": "Test a less redundant transform."},
+        "next_actions": ["create_candidate", "run_incremental_evaluation"],
+        "agent_identity": "research-agent-test",
+    }
+
+
+def test_decisions_are_separate_append_only_records(tmp_path):
+    db = tmp_path / "experiments.db"
+    run_dir = tmp_path / "runs" / "decision-run"
+    run_id = completed_run(db, run_dir, "decision-run")
+    summary = write_summary(run_dir, run_id)
+    store = make_store(db)
+    store.index_summary(run_id, summary)
+    before = summary.read_bytes()
+
+    assert store.list_decisions(run_id) == []
+    first = store.create_decision(**decision_payload())
+    second_payload = decision_payload()
+    second_payload["conclusion"] = {"status": "continue_research"}
+    second = store.create_decision(**second_payload)
+
+    decisions = store.list_decisions(run_id)
+    assert len(decisions) == 2
+    assert {item["decision_id"] for item in decisions} == {
+        first["decision_id"], second["decision_id"]
+    }
+    assert decisions == sorted(
+        decisions, key=lambda item: (item["created_at"], item["decision_id"])
+    )
+    assert decisions[0]["supporting_evidence"][0]["value"] == 0.001
+    assert {str(item["conclusion"]) for item in decisions} == {
+        "Evidence is mixed.", "{'status': 'continue_research'}"
+    }
+    assert summary.read_bytes() == before
+
+    store.index_summary(run_id, summary)
+    assert store.list_decisions(run_id) == decisions
+
+
+@pytest.mark.parametrize(
+    ("setup", "expected"),
+    (
+        ("missing", "Unknown run_id"),
+        ("running", "not completed"),
+        ("unindexed", "not indexed"),
+    ),
+)
+def test_decision_requires_completed_indexed_run(tmp_path, setup, expected):
+    db = tmp_path / "experiments.db"
+    registry = ExperimentRegistry(db)
+    if setup == "running":
+        run_id = registry.create_run(config_hash="running", config_json="{}")
+    elif setup == "unindexed":
+        run_id = registry.create_run(config_hash="complete", config_json="{}")
+        registry.complete_run(run_id, tmp_path / "runs" / run_id)
+    else:
+        run_id = "missing"
+    store = make_store(db)
+    payload = decision_payload(run_id=run_id)
+
+    with pytest.raises(ValueError, match=expected):
+        store.create_decision(**payload)
+
+
+def test_decision_rejects_wrong_source_hash_and_invalid_json(tmp_path):
+    db = tmp_path / "experiments.db"
+    run_dir = tmp_path / "runs" / "decision-run"
+    run_id = completed_run(db, run_dir, "decision-run")
+    store = make_store(db)
+    store.index_summary(run_id, write_summary(run_dir, run_id))
+
+    wrong_hash = decision_payload(source_hash="b" * 64)
+    with pytest.raises(ValueError, match="source_hash"):
+        store.create_decision(**wrong_hash)
+
+    not_json = decision_payload()
+    not_json["supporting_evidence"] = {"bad": {1, 2}}
+    with pytest.raises((TypeError, ValueError), match="JSON"):
+        store.create_decision(**not_json)
+
+    non_finite = decision_payload()
+    non_finite["opposing_evidence"] = {"bad": float("nan")}
+    with pytest.raises((TypeError, ValueError), match="JSON"):
+        store.create_decision(**non_finite)
+
+    assert store.list_decisions(run_id) == []
+
+
 def _index_result(store, run_id, path):
     try:
         store.index_summary(run_id, path)
