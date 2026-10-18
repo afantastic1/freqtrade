@@ -7,7 +7,7 @@
 
 ## 0. 执行要求（先阅读）
 
-1. **先审计现状再改代码**。逐文件检查 `alpha_lab/runner.py`、`candidate_cli.py`、`experiment_registry.py`、`research_store.py`、`research_cli.py`、`config.py`、`evaluation/incremental.py`、`evaluation/feedback.py`、`factors/candidate.py`、`factors/candidate_loader.py`、`validation/factor_validator.py`、相关测试，以及已有 `experiments.sqlite3` 表结构。此前曾提供 ZIP/草稿代码，不等于用户本地一定已经合并，**以工作树为准**。
+1. **先审计现状再改代码**。逐文件检查 `alpha_lab/runner.py`、`candidate_cli.py`、`experiment_registry.py`、`research_store.py`、`research_cli.py`、`config.py`、`evaluation/incremental.py`、`evaluation/evidence.py`、`factors/candidate.py`、`factors/candidate_loader.py`、`validation/factor_validator.py`、相关测试，以及已有 `experiments.sqlite3` 表结构。此前曾提供 ZIP/草稿代码，不等于用户本地一定已经合并，**以工作树为准**。
 2. 不更改现有 IC、RankIC、标签、Walk-Forward / purge、LogisticRegression、Bootstrap 数学定义来改善得分。不重新读取/触碰 2025 或 2026 数据。
 3. 不删除、覆盖旧报告或候选源码；数据库迁移和历史补录必须可重复运行且不重复计数。
 4. Agent 可以自主选择 `candidate_dir`，但一次提交应拥有规范的 `candidate.json`、`factor.py`；单次命令完成**完整研究**，默认有可比较的基线，支持显式覆盖或禁用基线。
@@ -21,7 +21,7 @@
 
 - `CandidateSpec` / `submit_candidate()` 验证 `candidate.json` 与 `factor.py`，生成 SHA-256。
 - Agent 动态因子通过 `FactorValidator`、`build_features()`、`evaluate_factor()`；模型通过现有 `evaluate_model()`、`make_walk_forward()`。
-- `evaluate_incremental()` 可比较 baseline、candidate、combined：相似度、ΔAUC、ΔLogLoss、ΔBrier、按月稳定性、Bootstrap block=24/72/168；`build_research_feedback()` 产生分类和建议。
+- `evaluate_incremental()` 可比较 baseline、candidate、combined：相似度、ΔAUC、ΔLogLoss、ΔBrier、按月稳定性、Bootstrap block=24/72/168；`build_evidence_report()` 只组织客观实验结果与溯源信息。
 - `ExperimentRegistry` 管理 SQLite `experiments` 生命周期，Runner 输出 `runs/<run_id>/summary.json`、预测与折指标。
 - 可能已有 `ResearchStore`（`candidates`、`evaluations`）和 `research_cli backfill/list`，必须核实安装/迁移状态，**不可假设已有完整数据库**。
 
@@ -39,12 +39,12 @@
 
 | 优先级 | 问题 | 后果 | 目标修复 |
 |---|---|---|---|
-| P0 | `candidate_cli run` 默认 `factors=[]` | Agent 需分别跑独立与增量两次；缺 feedback | 默认合并基线与候选、单次运行；仅指定 `--no-baseline` 才纯候选 |
+| P0 | `candidate_cli run` 默认 `factors=[]` | Agent 需分别跑独立与增量两次；缺增量证据 | 默认合并基线与候选、单次运行；仅指定 `--no-baseline` 才纯候选 |
 | P0 | 仅存 `source_hash`、路径，未冻结源码 | Agent 修改 `factor.py` 后不能复现旧实验 | 每次 Run 创建不可变源码与 manifest 快照、保存快照相对路径/哈希 |
 | P0 | 研究结果写 JSON 与 SQLite 不一致 / 未索引 | Agent 查询历史缺失、旧实验不完整 | 统一 `ResearchStore` 入库、失败可恢复、幂等补录、完整度状态 |
 | P0 | 同一候选/同配置重复执行 | 浪费训练、污染候选排行榜、增加选择偏差 | 使用可复现研究键查重并允许 `--force` 显式复跑 |
 | P1 | 增量 baseline 手工指定 | 不一致、难比较 | 本阶段默认 `momentum(4,12)`，提供明确覆盖参数；自动基线选择以后再做 |
-| P1 | `rank_ic` 符号不固定、反馈标签过度断言 | 错把负相关当无效，统计结论误报 | 保存 IC 有符号值、稳定性、方向；分类仅代表研究建议 |
+| P1 | `rank_ic` 符号不固定、实验层混入研究结论 | 错把负相关当无效，客观结果被策略判断污染 | 保存 IC 有符号值与稳定性；Research Decision 由 Agent 单独追加 |
 | P1 | 只记录成功实验，失败/被拒绝尝试查询不到 | Agent 重复犯错 | 研究查询区分 completed / failed / unindexed；失败归档原因并可检索 |
 | P1 | 样本检验假设/数据可用性信息缺失 | 误判显著性或未来泄漏 | 保存训练/测试区间、数据指纹、block 参数、共同样本与模型版本 |
 
@@ -57,7 +57,7 @@ python -m alpha_lab.candidate_cli run \
   user_data/research/alpha_lab/candidates/intrabar_pressure_reversal
 ```
 
-默认使用配置中的 BTC 1h、训练区间及 baseline=`momentum(4), momentum(12)`，运行 IC、RankIC、三模型增量评价、Bootstrap、feedback，并保存同一个 Run。baseline 要在报告中明确标注来源、参数和对应的 `feature_column` 名称。
+默认使用配置中的 BTC 1h、训练区间及 baseline=`momentum(4), momentum(12)`，运行 IC、RankIC、三模型增量评价和 Bootstrap，并将 Evidence Report 保存到同一个 Run。baseline 要在报告中明确标注来源、参数和对应的 `feature_column` 名称。
 
 可选命令（具体选项以项目惯例实现，保持兼容）：
 
@@ -83,7 +83,7 @@ user_data/research/alpha_lab/runs/<run_id>/
   candidate_snapshot/
     candidate.json
     factor.py
-  summary.json                  # 单因子+增量+稳定性+feedback
+  summary.json                  # 单因子+增量+稳定性+Evidence Report
   predictions.csv               # 默认最终模型预测
   fold_metrics.csv
   predictions_baseline.csv      # 增量模式
@@ -111,7 +111,8 @@ user_data/research/alpha_lab/runs/<run_id>/
 ### 3.2 evaluations：每个 run 的研究摘要
 
 - `run_id TEXT PRIMARY KEY`，FK 指向 `experiments.run_id`；`candidate_id` FK 指向 `candidates`。
-- 保存：`rank_ic`, `ic`, `mean_monthly_rank_ic`, `valid_months`, `auc`（**明确这是 candidate 单因子 AUC 还是 combined AUC**：分别 `candidate_auc`, `baseline_auc`, `combined_auc`，兼容旧 `auc` 列）, `max_abs_spearman`, `delta_auc`, `delta_logloss`, `delta_brier`, `positive_months`, `total_months`, `robust_positive`, `classification`, `tags_json`, `feedback_json`（简版）, `report_path`, `evaluation_mode`, `incremental_status`, `indexed_at`。
+- 保存：`rank_ic`, `ic`, `mean_monthly_rank_ic`, `valid_months`, `auc`（**明确这是 candidate 单因子 AUC 还是 combined AUC**：分别 `candidate_auc`, `baseline_auc`, `combined_auc`，兼容旧 `auc` 列）, `max_abs_spearman`, `delta_auc`, `delta_logloss`, `delta_brier`, `positive_months`, `total_months`, `robust_positive`, `evidence_json`, `report_path`, `evaluation_mode`, `incremental_status`, `indexed_at`。旧 `classification`、`tags_json`、`feedback_json` 列只用于读取历史记录，新实验保持 `NULL`。
+- `research_decisions` 与 `evaluations` 分表保存；每条决策必须引用 completed/indexed Run、candidate_id 与完全一致的 `candidate_source_hash`，并以 INSERT-only 方式追加支持证据、反对证据、结论、下一轮假设及动作。
 - 复杂的各月表、Bootstrap 区间、模型预测保留在 `summary.json` / CSV；SQLite 可按查询需求索引关键字段，不得冗余复制整个巨型 JSON。
 - 不适用/缺失指标使用 SQL `NULL`，**不能写 0**。
 - 对失败实验：保留 `experiments.status=failed`、错误原因；无成功评价则不伪造 `evaluations` 行。CLI 提供可检索失败历史或明确支持仅查成功。
@@ -167,16 +168,17 @@ user_data/research/alpha_lab/runs/<run_id>/
 4. 并发相同键运行要有确定行为：可用 SQLite 唯一占用/事务或受控提示，避免两个 Agent 同时重复启动；**不要让临时 running 记录永久阻塞**，要有恢复策略。
 5. 同一个因子 `pressure_window∈{4,6,12,24,48}` 虽未按业绩挑选，但仍进行过基于相关性的选择；数据库记录尝试/设计筛选的来源，避免宣称真正完全预注册。
 
-### P1-B：研究解释与质量控制
+### P1-B：Evidence Report 与 Research Decision 职责分离
 
-**文件：`alpha_lab/evaluation/feedback.py`, `evaluation/incremental.py` 及报告格式**
+**文件：`alpha_lab/evaluation/evidence.py`, `research_store.py`, `research_cli.py` 及报告格式**
 
-1. `CLV` 解释为收盘区间位置/价格行为代理指标；做市商库存回补仅为未检验的机制假说，不自动写成事实。
-2. `INCONCLUSIVE` 不能自动转 `ACCEPTED`；Bootstrap `positive_ratio` 不是“真实性概率”。区间跨 0 则不得宣称可靠显著。
-3. 报告显示与哪个 baseline 比较；负 IC/R​​ankIC 保留符号，是否反向使用属于后续建模策略，不要在研究阶段静默翻转。
-4. 因子相关性只说明与**当前**基线之间的冗余，不等于总体独立。允许追加低相关标签，但不得自动声称“经济理论成立”。
-5. 记录 `sample_eligible` 共同掩码及训练/预测时间戳一致性检验；确保 `label_available_time` purge 不回退。
-6. 对 Bootstrap 固定预测再重采样的局限在反馈中明确，避免把开发集 2023–24 当最终独立样本外。
+1. Alpha Lab 只保存 Evidence Report：因子质量、IC/RankIC、模型表现、相似度、增量表现、Bootstrap、数据与样本外使用信息。
+2. Evidence Report 不包含候选名称分支、固定经济解释、研究分类、标签或下一步动作。
+3. 报告显示与哪个 baseline 比较；负 IC/RankIC 保留符号，是否反向使用属于 Research Agent 的后续判断。
+4. 记录 `sample_eligible` 共同掩码及训练/预测时间戳一致性检验；确保 `label_available_time` purge 不回退。
+5. Research Agent 综合 Evidence Report 与历史记录，自主追加 Research Decision：支持证据、反对证据、研究结论、下一轮假设和研究动作。
+6. Research Decision 与实验评价分开存储，强制引用 Run ID 和候选源码哈希，不得覆盖 `summary.json`、Evidence Report 或旧决策。
+7. 历史 `research_feedback` 仅兼容读取，不自动升级为 Agent 决策。
 
 ## 5. 数据一致性与复现协议
 
@@ -190,7 +192,7 @@ user_data/research/alpha_lab/runs/<run_id>/
 
 | 测试 | 断言 |
 |---|---|
-| `test_default_candidate_baselines` | `candidate_cli run` 默认确实包含 mom4+mom12，一次 Run 产生 incremental/feedback |
+| `test_default_candidate_baselines` | `candidate_cli run` 默认确实包含 mom4+mom12，一次 Run 产生 incremental Evidence Report |
 | `test_explicit_no_baseline` | 纯候选可运行，增量字段为 `null` + `not_evaluated`，而非假指标 |
 | `test_three_model_no_duplicate_train` | 含 baseline 时只训练三组模型，无第四次重复全量训练 |
 | `test_candidate_snapshot_immutable` | 修改原始 factor.py 后旧 snapshot 源码/哈希不变，复现仍引用快照 |
@@ -232,7 +234,7 @@ python -m alpha_lab.research_cli list --candidate intrabar_pressure_reversal
 
 ### Gate 3：单命令完整研究
 
-对 `intrabar_pressure_reversal` 调用一次 `candidate_cli run`（建议 `--force` 测一次以绕过去重），必须生成：因子评价、baseline 相似度、三模型评价、块长度 24/72/168 Bootstrap、feedback、SQLite evaluation、实际执行源码快照。Run ID 必须只有一个。
+对 `intrabar_pressure_reversal` 调用一次 `candidate_cli run`（建议 `--force` 测一次以绕过去重），必须生成：因子评价、baseline 相似度、三模型评价、块长度 24/72/168 Bootstrap、Evidence Report、SQLite evaluation、实际执行源码快照。Run ID 必须只有一个。
 
 ### Gate 4：源码与去重
 
@@ -255,7 +257,7 @@ python -m alpha_lab.research_cli list --candidate intrabar_pressure_reversal
 
 **P1（随后做）：**
 6. 研究键去重、并发占用、失败恢复；覆盖 Gate 4。
-7. 修正 feedback、统计解释、元数据；覆盖 Gate 5。
+7. 完成 Evidence Report、Research Decision 分离与元数据；覆盖 Gate 5。
 8. 清除重复研究入口（可保留 `experiments/check_incremental.py` 作为手动分析/回归脚本，但正式研究不得依赖它）；补充 README/CLI `--help`。
 
 **不在本轮实现**：新 ML 模型、正交 IC、自动基线检索/向量化、全自动无限 Agent 循环、跨市场扩展、实盘策略、Docker 或权限沙箱。后续如需要可另建独立任务。

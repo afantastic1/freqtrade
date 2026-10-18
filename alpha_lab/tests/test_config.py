@@ -82,3 +82,9 @@ def test_invalid_test_window_rejected(tmp_path):
 
     with pytest.raises(ValueError, match="Invalid test window"):
         load_config(tmp_path, raw)
+
+
+def test_research_code_identity_covers_factor_report_and_evidence():
+    from alpha_lab import runner
+    names = {path.name for path in runner.EVALUATION_CODE_PATHS}
+    assert {"momentum.py", "factor_report.py", "evidence.py"} <= names
