@@ -15,19 +15,34 @@ from alpha_lab.evaluation.factor_report import evaluate_factor
 from alpha_lab.factors.builder import build_features
 from alpha_lab.factors.registry import default_registry
 from alpha_lab.models.evaluator import evaluate_model
-from alpha_lab.experiment_registry import ExperimentRegistry
-from alpha_lab.factors.candidate import submit_candidate
+from alpha_lab.experiment_registry import CompletedRunAvailable, ExperimentRegistry
+from alpha_lab.factors.candidate import snapshot_candidate, submit_candidate
 from alpha_lab.factors.candidate_loader import load_candidate
 from alpha_lab.factors.registry import FactorSpec
 from alpha_lab.validation.factor_validator import FactorValidator
 from alpha_lab.evaluation.incremental import evaluate_incremental
-from alpha_lab.evaluation.feedback import build_research_feedback
+from alpha_lab.evaluation.evidence import build_evidence_report
+from alpha_lab.research_store import ResearchStore
 
 DATA_DIR = Path("user_data/data/binance")
 OUTPUT_ROOT = Path("user_data/research/alpha_lab/runs")
 DB_PATH = Path("user_data/research/alpha_lab/experiments.sqlite3")
 BOOTSTRAP_SAMPLES = 1000
 BOOTSTRAP_BLOCK_SIZES = (24, 72, 168)
+LABEL_VERSION = "forward_return_binary_v1"
+EVALUATION_CODE_PATHS = (
+    Path(__file__),
+    Path(__file__).parent / "evaluation" / "incremental.py",
+    Path(__file__).parent / "evaluation" / "incremental_stability.py",
+    Path(__file__).parent / "evaluation" / "factor_report.py",
+    Path(__file__).parent / "evaluation" / "evidence.py",
+    Path(__file__).parent / "evaluation" / "ic.py",
+    Path(__file__).parent / "factors" / "momentum.py",
+    Path(__file__).parent / "factors" / "builder.py",
+    Path(__file__).parent / "models" / "evaluator.py",
+    Path(__file__).parent / "validation" / "walk_forward.py",
+    Path(__file__).parent / "labels" / "forward_returns.py",
+)
 
 
 def json_safe(value):
@@ -61,6 +76,103 @@ def json_safe(value):
         return None
 
     return value
+
+
+def _evaluation_code_version() -> str:
+    digest = hashlib.sha256()
+    for path in EVALUATION_CODE_PATHS:
+        digest.update(path.name.encode("utf-8"))
+        digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
+def _data_source_identity(config: ExperimentConfig) -> dict:
+    stem = config.symbol.replace("/", "_").replace(":", "_")
+    filename = f"{stem}-{config.timeframe}-futures.feather"
+    candidates = (DATA_DIR / "futures" / filename, DATA_DIR / filename)
+    path = next((item for item in candidates if item.is_file()), candidates[0])
+    identity = {
+        "path": str(path.resolve()),
+        "symbol": config.symbol,
+        "timeframe": config.timeframe,
+        "start": config.start,
+        "end": config.end,
+    }
+    if path.is_file():
+        stat = path.stat()
+        identity.update({"size": stat.st_size, "mtime_ns": stat.st_mtime_ns})
+    else:
+        identity["missing"] = True
+    identity["fingerprint"] = hashlib.sha256(
+        json.dumps(identity, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    return identity
+
+
+def _load_reusable_summary(
+    registry: ExperimentRegistry,
+    config_hash: str,
+    candidate,
+) -> tuple[dict | None, tuple[str, ...]]:
+    invalid_run_ids = []
+    for record in registry.find_by_config(config_hash):
+        if record["status"] != "completed":
+            continue
+        if not record.get("result_dir"):
+            invalid_run_ids.append(record["run_id"])
+            continue
+        result_dir = Path(record["result_dir"])
+        summary_path = result_dir / "summary.json"
+        manifest_path = result_dir / "manifest.json"
+        try:
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            archived = manifest["candidate"]
+            source_path = result_dir / archived["source_path"]
+            candidate_manifest_path = result_dir / archived["manifest_path"]
+            source_hash = hashlib.sha256(source_path.read_bytes()).hexdigest()
+            candidate_manifest_hash = hashlib.sha256(
+                candidate_manifest_path.read_bytes()
+            ).hexdigest()
+            archived_spec = submit_candidate(candidate_manifest_path.parent)
+        except (OSError, ValueError, KeyError, TypeError):
+            invalid_run_ids.append(record["run_id"])
+            continue
+        if (
+            summary.get("run_id") != record["run_id"]
+            or summary.get("config_hash") != config_hash
+            or summary.get("status") != "completed"
+            or not isinstance(summary.get("candidate"), dict)
+            or not isinstance(summary.get("factor_evaluation"), dict)
+            or not isinstance(summary.get("model_evaluation"), dict)
+            or manifest.get("config_hash") != config_hash
+            or archived.get("name") != candidate.name
+            or archived.get("source_hash") != candidate.source_hash
+            or archived.get("manifest_hash") != candidate_manifest_hash
+            or source_hash != candidate.source_hash
+            or archived_spec.source_hash != candidate.source_hash
+            or archived_spec.parameters != candidate.parameters
+            or archived_spec.prediction_horizon != candidate.prediction_horizon
+        ):
+            invalid_run_ids.append(record["run_id"])
+            continue
+        summary["reused"] = True
+        summary["report_path"] = str(summary_path)
+        return summary, tuple(invalid_run_ids)
+    return None, tuple(invalid_run_ids)
+
+
+def _ensure_reused_index(summary: dict) -> dict:
+    try:
+        ResearchStore(DB_PATH).index_summary(
+            summary["run_id"], summary["report_path"]
+        )
+    except Exception as exc:
+        raise RuntimeError(
+            f"Reusable artifacts found but indexing failed; run backfill for "
+            f"{summary['run_id']}: {exc}"
+        ) from exc
+    return summary
 
 
 def _execute_experiment(
@@ -142,6 +254,8 @@ def _execute_experiment(
             "source_path": str(candidate.source_path),
             "parameters": dict(candidate.parameters),
             "hypothesis": candidate.hypothesis,
+            "required_columns": list(candidate.required_columns),
+            "prediction_horizon": candidate.prediction_horizon,
             "validation": {
                 "passed": validation.passed,
                 "valid_count": validation.valid_count,
@@ -195,7 +309,6 @@ def _execute_experiment(
     # 5. 模型评价：增量评价与普通评价互斥，避免重复训练
     # --------------------------------------------------------
     incremental_result = None
-    feedback = None
     model_variants = None
 
     if candidate is not None and baseline_columns:
@@ -214,10 +327,8 @@ def _execute_experiment(
         )
         # 三个模型已经计算完毕，直接复用 combined，不再训练第四次
         model_result = model_variants["combined"]
-        feedback = build_research_feedback(
-            candidate_name=candidate.name,
-            incremental=incremental_result,
-        )
+        evaluation_mode = "incremental"
+        incremental_status = "evaluated"
     else:
         # 纯内置因子或纯候选因子，沿用原有评价模式
         model_result = evaluate_model(
@@ -234,6 +345,12 @@ def _execute_experiment(
             min_train_samples=1000,
             scale_features=True,
         )
+        evaluation_mode = (
+            "single_factor" if candidate is not None else "builtin"
+        )
+        incremental_status = (
+            "not_evaluated" if candidate is not None else "not_applicable"
+        )
 
     # 防止实验运行期间 Agent 修改了候选文件，导致报告身份错误
     if candidate is not None:
@@ -247,7 +364,7 @@ def _execute_experiment(
     # 6. 保存实验产物
     # --------------------------------------------------------
     output_dir = OUTPUT_ROOT / run_id
-    output_dir.mkdir(parents=True, exist_ok=False)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     for name, report in factor_reports.items():
         report_dir = output_dir / "factors" / name
@@ -292,6 +409,72 @@ def _execute_experiment(
     # --------------------------------------------------------
     # 7. 构建标准实验摘要
     # --------------------------------------------------------
+    data_range = {
+        "start": config.start,
+        "end": config.end,
+        "test_start": config.test_start,
+        "test_end": config.test_end,
+    }
+    model_metadata = {
+        "name": config.model,
+        "implementation": "sklearn.linear_model.LogisticRegression",
+        "train_months": config.train_months,
+        "retrain_months": config.retrain_months,
+    }
+    baseline_metadata = (
+        {
+            "source": config.baseline_source,
+            "factors": [
+                {
+                    "name": spec.name,
+                    "params": dict(spec.params),
+                    "alias": spec.alias,
+                    "feature_column": spec.output_name,
+                }
+                for spec in config.factors
+            ],
+        }
+        if baseline_columns else None
+    )
+    factor_evaluation = {
+        name: {
+            "quality": report["quality"],
+            "overall": report["overall"],
+            "stability": report["stability"],
+        }
+        for name, report in factor_reports.items()
+    }
+    evidence_report = build_evidence_report(
+        run_id=run_id,
+        candidate=candidate_info,
+        factor_evaluation=factor_evaluation,
+        model_evaluation=model_result.metrics,
+        incremental_evaluation=incremental_result,
+        evaluation_mode=evaluation_mode,
+        incremental_status=incremental_status,
+        baseline=baseline_metadata,
+        data={
+            "symbol": config.symbol,
+            "timeframe": config.timeframe,
+            "range": data_range,
+            "rows": len(dataset),
+            "label_horizon": config.horizon,
+        },
+        model={
+            **model_metadata,
+            "test_start": config.test_start,
+            "test_end": config.test_end,
+            "validation_protocol": "walk_forward",
+        },
+        bootstrap={
+            "samples": BOOTSTRAP_SAMPLES,
+            "block_sizes": list(BOOTSTRAP_BLOCK_SIZES),
+            "status": (
+                "evaluated" if incremental_result is not None else "not_evaluated"
+            ),
+        },
+    )
+
     summary = {
         "run_id": run_id,
         "config_hash": config_hash,
@@ -301,19 +484,17 @@ def _execute_experiment(
         "horizon": config.horizon,
         "feature_columns": feature_columns,
         "data_rows": len(dataset),
-        "factor_evaluation": {
-            name: {
-                "quality": report["quality"],
-                "overall": report["overall"],
-                "stability": report["stability"],
-            }
-            for name, report in factor_reports.items()
-        },
+        "data_range": data_range,
+        "model": model_metadata,
+        "evaluation_mode": evaluation_mode,
+        "incremental_status": incremental_status,
+        "baseline": baseline_metadata,
+        "factor_evaluation": factor_evaluation,
         "model_evaluation": model_result.metrics,
         "prediction_rows": len(model_result.predictions),
         "candidate": candidate_info,
         "incremental_evaluation": incremental_result,
-        "research_feedback": feedback,
+        "evidence_report": evidence_report,
     }
 
     safe_summary = json_safe(summary)
@@ -344,6 +525,7 @@ def _execute_experiment(
 
 def run_experiment(config_path: str | Path,
                     candidate_dir: str | Path | None = None,
+                    force: bool = False,
                     ) -> dict:
     """
     创建实验记录，执行实验，更新最终状态。
@@ -358,6 +540,9 @@ def run_experiment(config_path: str | Path,
         config_path.read_text(encoding="utf-8")
     )
 
+    candidate = None
+    data_identity = None
+    code_version = None
     # 实际运行配置包含候选源码身份
     if candidate_dir is not None:
         candidate = submit_candidate(candidate_dir)
@@ -367,6 +552,7 @@ def run_experiment(config_path: str | Path,
             "source_hash": candidate.source_hash,
             "parameters": candidate.parameters,
             "prediction_horizon": candidate.prediction_horizon,
+            "required_columns": list(candidate.required_columns),
         }
 
         if config.factors:
@@ -383,6 +569,27 @@ def run_experiment(config_path: str | Path,
             raise ValueError(
                 "Candidate prediction_horizon mismatch"
             )
+
+        data_identity = _data_source_identity(config)
+        code_version = _evaluation_code_version()
+        raw["research_identity"] = {
+            "data": data_identity,
+            "label_version": LABEL_VERSION,
+            "evaluation_code_version": code_version,
+            "model": {
+                "name": config.model,
+                "train_months": config.train_months,
+                "retrain_months": config.retrain_months,
+                "test_start": config.test_start,
+                "test_end": config.test_end,
+                "min_train_samples": 1000,
+                "scale_features": True,
+            },
+            "bootstrap": {
+                "samples": BOOTSTRAP_SAMPLES,
+                "block_sizes": list(BOOTSTRAP_BLOCK_SIZES),
+            },
+        }
     
     canonical_config = json.dumps(
         raw,
@@ -398,20 +605,91 @@ def run_experiment(config_path: str | Path,
 
     registry = ExperimentRegistry(DB_PATH)
 
-    run_id = registry.create_run(
-        config_hash=config_hash,
-        config_json=canonical_config,
-    )
+    ignored_completed = ()
+    if candidate is not None and not force:
+        reusable, ignored_completed = _load_reusable_summary(
+            registry, config_hash, candidate
+        )
+        if reusable is not None:
+            return _ensure_reused_index(reusable)
+
+    if candidate is not None:
+        while True:
+            try:
+                run_id = registry.claim_run(
+                    config_hash=config_hash,
+                    config_json=canonical_config,
+                    code_version=code_version,
+                    data_fingerprint=data_identity["fingerprint"],
+                    ignored_completed_run_ids=ignored_completed,
+                    allow_completed=force,
+                )
+                break
+            except CompletedRunAvailable:
+                reusable, newly_invalid = _load_reusable_summary(
+                    registry, config_hash, candidate
+                )
+                if reusable is not None:
+                    return _ensure_reused_index(reusable)
+                ignored_completed = tuple(
+                    set(ignored_completed).union(newly_invalid)
+                )
+    else:
+        run_id = registry.create_run(
+            config_hash=config_hash,
+            config_json=canonical_config,
+        )
 
     print(f"Run ID: {run_id}")
     print(f"Config Hash: {config_hash[:16]}")
 
     try:
+        execution_candidate_dir = candidate_dir
+        if candidate_dir is not None:
+            output_dir = OUTPUT_ROOT / run_id
+            output_dir.mkdir(parents=True, exist_ok=False)
+            snapshot = snapshot_candidate(
+                candidate_dir,
+                output_dir,
+                expected=candidate,
+            )
+            execution_candidate_dir = snapshot.candidate_dir
+            manifest = {
+                "manifest_version": 1,
+                "run_id": run_id,
+                "config_hash": config_hash,
+                "config": raw,
+                "candidate": {
+                    "name": candidate.name,
+                    "original_source_path": str(candidate.source_path),
+                    "source_path": snapshot.source_relative_path,
+                    "manifest_path": snapshot.manifest_relative_path,
+                    "source_hash": snapshot.spec.source_hash,
+                    "manifest_hash": snapshot.manifest_hash,
+                    "required_columns": list(candidate.required_columns),
+                    "prediction_horizon": candidate.prediction_horizon,
+                },
+                "data": data_identity,
+                "evaluation_code_version": code_version,
+                "label_version": LABEL_VERSION,
+            }
+            temporary_manifest = output_dir / "manifest.json.tmp"
+            temporary_manifest.write_text(
+                json.dumps(
+                    json_safe(manifest),
+                    indent=2,
+                    ensure_ascii=False,
+                    allow_nan=False,
+                ),
+                encoding="utf-8",
+            )
+            temporary_manifest.replace(output_dir / "manifest.json")
+
         summary = _execute_experiment(
             config=config,
             run_id=run_id,
             config_hash=config_hash,
-            candidate_dir=candidate_dir
+            candidate_dir=execution_candidate_dir,
         )
 
     except Exception as exc:
@@ -421,12 +699,25 @@ def run_experiment(config_path: str | Path,
         )
         raise
 
-    # 仅当计算及文件写入全部成功后，提交完成状态
+    # 仅当计算及文件写入全部成功后，提交完成状态。
+    # 研究索引随后写入；若失败，completed 产物可由 backfill 恢复。
     registry.complete_run(
         run_id=run_id,
         result_dir=OUTPUT_ROOT / run_id,
     )
 
+    if candidate is not None:
+        summary_path = OUTPUT_ROOT / run_id / "summary.json"
+        try:
+            ResearchStore(DB_PATH).index_summary(run_id, summary_path)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Research artifacts completed but indexing failed; "
+                f"run backfill for {run_id}: {exc}"
+            ) from exc
+
+    summary["reused"] = False
+    summary["report_path"] = str(OUTPUT_ROOT / run_id / "summary.json")
     return summary
 
 
