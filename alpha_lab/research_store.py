@@ -266,10 +266,6 @@ class ResearchStore:
             raise ValueError("Summary has no candidate")
 
         candidate_id = candidate_id_for(candidate)
-        report = self._candidate_report(summary, candidate["name"])
-        overall = report.get("overall") or {}
-        factor_stability = report.get("stability") or {}
-        incremental = summary.get("incremental_evaluation")
         evidence = summary.get("evidence_report")
         if evidence is not None:
             if not isinstance(evidence, dict):
@@ -282,6 +278,12 @@ class ResearchStore:
                 or evidence_candidate.get("source_hash") != candidate["source_hash"]
             ):
                 raise ValueError("Evidence report candidate source_hash mismatch")
+        evaluation = evidence if evidence is not None else summary
+        report = self._candidate_report(evaluation, candidate["name"])
+        overall = report.get("overall") or {}
+        factor_stability = report.get("stability") or {}
+        incremental = evaluation.get("incremental_evaluation")
+        evaluation_context = evaluation.get("evaluation_context") or {}
         legacy_feedback = (
             summary.get("research_feedback") or {}
             if evidence is None else {}
@@ -291,8 +293,10 @@ class ResearchStore:
         )
 
         if incremental:
-            mode = "incremental"
-            incremental_status = "evaluated"
+            mode = evaluation_context.get("evaluation_mode", "incremental")
+            incremental_status = evaluation_context.get(
+                "incremental_status", "evaluated"
+            )
             baseline_auc = _finite((incremental.get("baseline") or {}).get("auc"))
             candidate_auc = _finite((incremental.get("candidate") or {}).get("auc"))
             combined_auc = _finite((incremental.get("combined") or {}).get("auc"))
@@ -311,10 +315,14 @@ class ResearchStore:
             total_months = len(monthly)
             robust_positive = int(bool(stability.get("robust_positive")))
         else:
-            mode = "single_factor"
-            incremental_status = "not_evaluated"
+            mode = evaluation_context.get("evaluation_mode", "single_factor")
+            incremental_status = evaluation_context.get(
+                "incremental_status", "not_evaluated"
+            )
             candidate_auc = _finite(
-                ((summary.get("model_evaluation") or {}).get("model") or {}).get("auc")
+                ((evaluation.get("model_evaluation") or {}).get("model") or {}).get(
+                    "auc"
+                )
             )
             baseline_auc = combined_auc = None
             gains = {}
@@ -461,6 +469,19 @@ class ResearchStore:
         next_actions: list | dict,
         agent_identity: str | None = None,
     ) -> dict:
+        structural_fields = {
+            "supporting_evidence": (supporting_evidence, (list, dict)),
+            "opposing_evidence": (opposing_evidence, (list, dict)),
+            "conclusion": (conclusion, (str, dict)),
+            "next_hypothesis": (next_hypothesis, (str, dict)),
+            "next_actions": (next_actions, (list, dict)),
+        }
+        for field, (value, allowed) in structural_fields.items():
+            if not isinstance(value, allowed):
+                raise TypeError(f"{field} has an invalid structural type")
+        if agent_identity is not None and not isinstance(agent_identity, str):
+            raise TypeError("agent_identity must be text or None")
+
         payloads = {
             "supporting_evidence_json": self._decision_json(
                 supporting_evidence, "supporting_evidence"

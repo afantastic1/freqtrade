@@ -265,6 +265,28 @@ def test_legacy_feedback_remains_readable_without_becoming_evidence(tmp_path):
     assert row[3] is None
 
 
+def test_new_index_metrics_are_sourced_from_evidence_report(tmp_path):
+    db = tmp_path / "experiments.db"
+    run_dir = tmp_path / "runs" / "evidence-source"
+    run_id = completed_run(db, run_dir, "evidence-source")
+    summary = write_summary(run_dir, run_id)
+    payload = json.loads(summary.read_text())
+    payload["factor_evaluation"]["signed_factor_window_12"]["overall"] = {
+        "rank_ic": 99.0,
+        "ic": 99.0,
+    }
+    payload["model_evaluation"]["model"]["auc"] = 0.99
+    payload["incremental_evaluation"]["incremental"]["auc"] = 0.99
+    summary.write_text(json.dumps(payload), encoding="utf-8")
+
+    indexed = make_store(db).index_summary(run_id, summary)
+
+    assert indexed["rank_ic"] == pytest.approx(-0.08)
+    assert indexed["ic"] == pytest.approx(-0.06)
+    assert indexed["candidate_auc"] == pytest.approx(0.53)
+    assert indexed["delta_auc"] == pytest.approx(0.001)
+
+
 def test_list_runs_filters_candidate_and_status(tmp_path):
     db = tmp_path / "experiments.db"
     run_dir = tmp_path / "runs" / "listed"
@@ -428,6 +450,34 @@ def test_decision_rejects_wrong_source_hash_and_invalid_json(tmp_path):
     non_finite["opposing_evidence"] = {"bad": float("nan")}
     with pytest.raises((TypeError, ValueError), match="JSON"):
         store.create_decision(**non_finite)
+
+    assert store.list_decisions(run_id) == []
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("supporting_evidence", "not structured evidence"),
+        ("opposing_evidence", 1),
+        ("conclusion", ["not", "a conclusion object"]),
+        ("next_hypothesis", ["not", "a hypothesis"]),
+        ("next_actions", "not a structured action list"),
+        ("agent_identity", {"not": "text"}),
+    ),
+)
+def test_decision_rejects_payloads_with_wrong_structural_type(
+    tmp_path, field, value
+):
+    db = tmp_path / "experiments.db"
+    run_dir = tmp_path / "runs" / "decision-run"
+    run_id = completed_run(db, run_dir, "decision-run")
+    store = make_store(db)
+    store.index_summary(run_id, write_summary(run_dir, run_id))
+    payload = decision_payload()
+    payload[field] = value
+
+    with pytest.raises(TypeError, match=field):
+        store.create_decision(**payload)
 
     assert store.list_decisions(run_id) == []
 
