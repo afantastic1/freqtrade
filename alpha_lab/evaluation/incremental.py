@@ -73,6 +73,7 @@ def evaluate_incremental(
     min_train_samples: int = 1000,
     bootstrap_samples: int = 1000,
     bootstrap_block_sizes: tuple[int, ...] = (24, 72, 168),
+    return_model_results: bool = False,
 ) -> dict:
     """
     在相同的有效样本和 Walk-Forward 条件下比较：
@@ -253,24 +254,15 @@ def evaluate_incremental(
     combined_metrics = results["combined"].metrics["model"]
 
     # 6. 返回完整的增量评价报告
-    return {
+    report = {
         "factor_similarity": similarity,
         "baseline": baseline_metrics,
         "candidate": candidate_metrics,
         "combined": combined_metrics,
         "incremental": {
-            "auc": (
-                combined_metrics["auc"]
-                - baseline_metrics["auc"]
-            ),
-            "logloss": (
-                baseline_metrics["logloss"]
-                - combined_metrics["logloss"]
-            ),
-            "brier": (
-                baseline_metrics["brier"]
-                - combined_metrics["brier"]
-            ),
+            "auc": combined_metrics["auc"] - baseline_metrics["auc"],
+            "logloss": baseline_metrics["logloss"] - combined_metrics["logloss"],
+            "brier": baseline_metrics["brier"] - combined_metrics["brier"],
         },
         "stability": {
             "monthly": monthly_stability,
@@ -279,5 +271,9 @@ def evaluate_incremental(
             "robust_positive": robust_positive,
         },
         "n": len(anchor),
-        
     }
+
+    if return_model_results:
+        return report, results
+
+    return report

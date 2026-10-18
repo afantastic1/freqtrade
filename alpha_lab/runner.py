@@ -20,10 +20,14 @@ from alpha_lab.factors.candidate import submit_candidate
 from alpha_lab.factors.candidate_loader import load_candidate
 from alpha_lab.factors.registry import FactorSpec
 from alpha_lab.validation.factor_validator import FactorValidator
+from alpha_lab.evaluation.incremental import evaluate_incremental
+from alpha_lab.evaluation.feedback import build_research_feedback
 
 DATA_DIR = Path("user_data/data/binance")
 OUTPUT_ROOT = Path("user_data/research/alpha_lab/runs")
 DB_PATH = Path("user_data/research/alpha_lab/experiments.sqlite3")
+BOOTSTRAP_SAMPLES = 1000
+BOOTSTRAP_BLOCK_SIZES = (24, 72, 168)
 
 
 def json_safe(value):
@@ -102,6 +106,8 @@ def _execute_experiment(
     registry = default_registry()
     specs = list(config.factors)
     candidate_info = None
+    candidate = None
+    baseline_count = len(specs)
 
     if candidate_dir is not None:
         candidate, factor_function = load_candidate(candidate_dir)
@@ -154,6 +160,9 @@ def _execute_experiment(
 
 
     feature_columns = features.columns.tolist()
+    baseline_columns = feature_columns[:baseline_count]
+    candidate_column = feature_columns[-1] if candidate is not None else None
+
 
     # --------------------------------------------------------
     # 3. 生成研究数据集
@@ -183,22 +192,56 @@ def _execute_experiment(
         factor_reports[name] = report
 
     # --------------------------------------------------------
-    # 5. 多因子 Walk-Forward 模型评价
+    # 5. 模型评价：增量评价与普通评价互斥，避免重复训练
     # --------------------------------------------------------
-    model_result = evaluate_model(
-        dataset=dataset,
-        feature_columns=feature_columns,
-        model_factory=lambda: LogisticRegression(
-            max_iter=1000,
-            random_state=42,
-        ),
-        test_start=config.test_start,
-        test_end=config.test_end,
-        train_months=config.train_months,
-        retrain_months=config.retrain_months,
-        min_train_samples=1000,
-        scale_features=True,
-    )
+    incremental_result = None
+    feedback = None
+    model_variants = None
+
+    if candidate is not None and baseline_columns:
+        incremental_result, model_variants = evaluate_incremental(
+            dataset=dataset,
+            candidate_column=candidate_column,
+            baseline_columns=baseline_columns,
+            test_start=config.test_start,
+            test_end=config.test_end,
+            train_months=config.train_months,
+            retrain_months=config.retrain_months,
+            min_train_samples=1000,
+            bootstrap_samples=BOOTSTRAP_SAMPLES,
+            bootstrap_block_sizes=BOOTSTRAP_BLOCK_SIZES,
+            return_model_results=True,
+        )
+        # 三个模型已经计算完毕，直接复用 combined，不再训练第四次
+        model_result = model_variants["combined"]
+        feedback = build_research_feedback(
+            candidate_name=candidate.name,
+            incremental=incremental_result,
+        )
+    else:
+        # 纯内置因子或纯候选因子，沿用原有评价模式
+        model_result = evaluate_model(
+            dataset=dataset,
+            feature_columns=feature_columns,
+            model_factory=lambda: LogisticRegression(
+                max_iter=1000,
+                random_state=42,
+            ),
+            test_start=config.test_start,
+            test_end=config.test_end,
+            train_months=config.train_months,
+            retrain_months=config.retrain_months,
+            min_train_samples=1000,
+            scale_features=True,
+        )
+
+    # 防止实验运行期间 Agent 修改了候选文件，导致报告身份错误
+    if candidate is not None:
+        actual_hash = hashlib.sha256(
+            candidate.source_path.read_bytes()
+        ).hexdigest()
+        if actual_hash != candidate.source_hash:
+            raise ValueError("Candidate source changed during experiment")
 
     # --------------------------------------------------------
     # 6. 保存实验产物
@@ -224,6 +267,17 @@ def _execute_experiment(
             report_dir / "deciles.csv",
             index=False,
         )
+
+    # 统一 predictions.csv / fold_metrics.csv 始终表示最终选用模型。
+    # 增量研究另外保留三组模型的原始预测，供后续审计和配对检验。
+    if model_variants is not None:
+        for group_name, group_result in model_variants.items():
+            group_result.predictions.to_csv(
+                output_dir / f"predictions_{group_name}.csv", index=False
+            )
+            group_result.fold_metrics.to_csv(
+                output_dir / f"fold_metrics_{group_name}.csv", index=False
+            )
 
     model_result.predictions.to_csv(
         output_dir / "predictions.csv",
@@ -258,6 +312,8 @@ def _execute_experiment(
         "model_evaluation": model_result.metrics,
         "prediction_rows": len(model_result.predictions),
         "candidate": candidate_info,
+        "incremental_evaluation": incremental_result,
+        "research_feedback": feedback,
     }
 
     safe_summary = json_safe(summary)
@@ -312,6 +368,16 @@ def run_experiment(config_path: str | Path,
             "parameters": candidate.parameters,
             "prediction_horizon": candidate.prediction_horizon,
         }
+
+        if config.factors:
+            raw["incremental_evaluation"] = {
+                "baseline_factors": [
+                    {"name": spec.name, "params": spec.params}
+                    for spec in config.factors
+                ],
+                "bootstrap_samples": BOOTSTRAP_SAMPLES,
+                "bootstrap_block_sizes": list(BOOTSTRAP_BLOCK_SIZES),
+            }
 
         if candidate.prediction_horizon != config.horizon:
             raise ValueError(
