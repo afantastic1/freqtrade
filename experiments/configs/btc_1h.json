@@ -1,0 +1,23 @@
+
+{
+  "symbol": "BTC/USDT:USDT",
+  "timeframe": "1h",
+  "start": "2022-01-01",
+  "end": "2025-01-01",
+  "horizon": 4,
+  "factors": [
+    {
+      "name": "momentum",
+      "params": {"periods": 4}
+    },
+    {
+      "name": "momentum",
+      "params": {"periods": 12}
+    }
+  ],
+  "model": "logistic",
+  "train_months": 12,
+  "retrain_months": 1,
+  "test_start": "2023-01-01",
+  "test_end": "2025-01-01"
+}

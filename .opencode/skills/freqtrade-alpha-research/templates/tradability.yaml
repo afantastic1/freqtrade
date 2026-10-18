@@ -1,0 +1,9 @@
+# Tradability snapshot for a small-account short-cycle candidate.
+# Recorded verbatim via: alpha.py tradability record --file tradability.json
+# Verdict is one of PASS | FAIL | INSUFFICIENT. Never relax a risk limit to reach PASS.
+experiment_id: ""
+timeframe: ""            # 5m|15m|30m|1h|2h|4h
+horizon_duration: ""     # 15m|30m|1h|2h|4h
+capital_usdt: 300
+verdict: ""              # PASS | FAIL | INSUFFICIENT
+checks: {}               # e.g. the dict returned by lib/tradability.evaluate_tradability()

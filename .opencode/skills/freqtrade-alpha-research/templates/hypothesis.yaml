@@ -1,0 +1,11 @@
+hypothesis_id: H001
+mechanism: ""
+thesis: ""
+expected_sign: 1
+falsification: ""
+semantic_family: ""
+inputs: []
+frequency: 1h          # K-line cadence; 5m|15m|30m|1h|2h|4h for short-cycle
+horizons: [6h]         # prediction windows; short-cycle uses 15m/30m/1h/2h/4h durations
+access: EXPLORATORY
+max_expressions: 2

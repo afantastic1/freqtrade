@@ -1,0 +1,18 @@
+hypothesis_id: H001
+factor_id: F001
+dataset_id: ""
+split_role: EXPLORATORY
+horizon: 6h
+decision_frequency: 1h
+# short-cycle only (leave blank for the default 24h-style research)
+timeframe: ""            # K-line timeframe: 5m|15m|30m|1h|2h|4h
+horizon_duration: ""     # prediction window: 15m|30m|1h|2h|4h (must be integer multiple of timeframe)
+capital_usdt: null       # account size for the tradability gate (e.g. 300)
+entry_rule: next_bar_open
+target_spec: {}          # must include timeframe + horizon for short-cycle cache identity
+cost_model:
+  fees: ""
+  funding: ""
+  slippage: ""
+test_family_id: ""
+code_commit: ""
