@@ -325,18 +325,72 @@ def test_new_snapshot_enriches_legacy_candidate_manifest(tmp_path):
     assert manifest["prediction_horizon"] == 4
 
 
-def test_concurrent_conflicting_index_cannot_mix_identity_and_metrics(tmp_path):
-    from concurrent.futures import ThreadPoolExecutor
-    db = tmp_path / "experiments.db"
-    run_dir = tmp_path / "runs" / "same"
-    run_id = completed_run(db, run_dir, "same")
+def _set_candidate_auc(payload, value):
+    """Set candidate AUC on *every* copy the store may read.
+
+    ``index_summary`` reads the incremental block from ``evidence_report``
+    when it is present (see ``ResearchStore.index_summary``), while legacy
+    summaries store it at the top level. Mutating only one copy leaves the
+    payload internally inconsistent, which is exactly the state this test
+    exists to forbid.
+    """
+    payload["incremental_evaluation"]["candidate"]["auc"] = value
+    evidence = payload.get("evidence_report")
+    if isinstance(evidence, dict):
+        evidence["incremental_evaluation"]["candidate"]["auc"] = value
+
+
+def _assert_consistent_identity_and_metrics(row, run_id):
+    """The stored row must come entirely from one payload, never a mix."""
+    source_hash = row["source_hash"]
+    auc = row["candidate_auc"]
+    assert (source_hash, auc) in {
+        ("a" * 64, 0.53),
+        ("b" * 64, 0.99),
+    }, f"identity/metrics mixed: source_hash={source_hash!r} auc={auc!r} (run {run_id})"
+
+
+def _conflicting_payloads(tmp_path, run_dir, run_id):
     first = write_summary(run_dir, run_id, source_hash="a" * 64)
     second = tmp_path / "other-summary.json"
     payload = json.loads(first.read_text())
     payload["candidate"]["source_hash"] = "b" * 64
     payload["evidence_report"]["candidate"]["source_hash"] = "b" * 64
-    payload["incremental_evaluation"]["candidate"]["auc"] = 0.99
+    _set_candidate_auc(payload, 0.99)
     second.write_text(json.dumps(payload), encoding="utf-8")
+    return first, second
+
+
+def test_conflicting_index_cannot_mix_identity_and_metrics(tmp_path):
+    """Deterministic version: no thread scheduling involved.
+
+    Whichever payload is indexed first wins; the second must be rejected and
+    must not overwrite any part of the winner.
+    """
+    db = tmp_path / "experiments.db"
+    run_dir = tmp_path / "runs" / "same"
+    run_id = completed_run(db, run_dir, "same")
+    first, second = _conflicting_payloads(tmp_path, run_dir, run_id)
+    store = make_store(db)
+
+    results = [
+        _index_result(store, run_id, first),
+        _index_result(store, run_id, second),
+    ]
+
+    assert results == ["ok", "conflict"]
+    row = store.show_run(run_id)
+    _assert_consistent_identity_and_metrics(row, run_id)
+    assert row["source_hash"] == "a" * 64
+    assert row["candidate_auc"] == 0.53
+
+
+def test_concurrent_conflicting_index_cannot_mix_identity_and_metrics(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    db = tmp_path / "experiments.db"
+    run_dir = tmp_path / "runs" / "same"
+    run_id = completed_run(db, run_dir, "same")
+    first, second = _conflicting_payloads(tmp_path, run_dir, run_id)
     store = make_store(db)
 
     with ThreadPoolExecutor(max_workers=2) as pool:
@@ -346,12 +400,9 @@ def test_concurrent_conflicting_index_cannot_mix_identity_and_metrics(tmp_path):
         ))
 
     assert sorted(results) == ["conflict", "ok"]
-    row = store.show_run(run_id)
-    if row["source_hash"] == "b" * 64:
-        assert row["candidate_auc"] == 0.99
-    else:
-        assert row["source_hash"] == "a" * 64
-        assert row["candidate_auc"] == 0.53
+    _assert_consistent_identity_and_metrics(
+        store.show_run(run_id), run_id
+    )
 
 
 def decision_payload(run_id="decision-run", source_hash="a" * 64):

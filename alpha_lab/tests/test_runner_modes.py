@@ -142,6 +142,13 @@ def test_three_model_no_duplicate_train(tmp_path, monkeypatch):
         "status": "evaluated",
     }
     assert evidence["evaluation_context"]["data"]["label_horizon"] == 4
+    assert evidence["evaluation_context"]["data"]["label_horizon_seconds"] == (
+        4 * 3600
+    )
+    assert evidence["evaluation_context"]["data"]["label_horizon_duration"] == (
+        "0 days 04:00:00"
+    )
+    assert evidence["evaluation_context"]["data"]["timeframe"] == "1h"
     assert evidence["evaluation_context"]["model"]["validation_protocol"] == (
         "walk_forward"
     )

@@ -156,6 +156,39 @@ class ResearchStore:
             """)
             self._add_missing_columns(conn, "candidates", CANDIDATE_COLUMNS)
             self._add_missing_columns(conn, "evaluations", EVALUATION_COLUMNS)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS statistical_reviews (
+                    review_id TEXT PRIMARY KEY,
+                    run_id TEXT NOT NULL,
+                    candidate_id TEXT,
+                    method_version TEXT NOT NULL,
+                    timeframe TEXT,
+                    horizon INTEGER,
+                    n INTEGER,
+                    n_eff REAL,
+                    block_size INTEGER,
+                    bootstrap_samples INTEGER,
+                    primary_metric TEXT NOT NULL,
+                    effect REAL,
+                    ci_low REAL,
+                    ci_high REAL,
+                    mde REAL,
+                    adjusted_p REAL,
+                    verdict TEXT NOT NULL,
+                    mechanism_verdict TEXT,
+                    payload_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (run_id) REFERENCES experiments(run_id)
+                )
+            """)
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_statistical_reviews_run "
+                "ON statistical_reviews(run_id, method_version)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_statistical_reviews_verdict "
+                "ON statistical_reviews(verdict)"
+            )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_candidates_name "
                 "ON candidates(name)"
@@ -605,3 +638,143 @@ class ResearchStore:
                 LIMIT ?
             """, parameters).fetchall()
         return [dict(row) for row in rows]
+
+    # ------------------------------------------------------------------
+    # 统计重评（append-only）
+    # ------------------------------------------------------------------
+    @staticmethod
+    def statistical_review_id(
+        run_id: str,
+        method_version: str,
+        n_boot: int,
+        random_state: int,
+    ) -> str:
+        key = f"{run_id}|{method_version}|{n_boot}|{random_state}"
+        return hashlib.sha256(key.encode("utf-8")).hexdigest()
+
+    def record_statistical_review(
+        self,
+        review: dict,
+        *,
+        method_version: str,
+        candidate_id: str | None = None,
+    ) -> str:
+        """追加一条统计重评记录。
+
+        **只 INSERT，不 UPDATE、不 DELETE**：重评是对原始 append-only
+        证据的派生结论，历史必须保留。相同 (run_id, method_version, n_boot,
+        random_state) 幂等；更换 method_version 会增加新行而不是覆盖旧行。
+
+        `verdict` 列存的是**增量价值轴**的标签（只看 Δ 指标，方向无关），
+        `mechanism_verdict` 列存**机制方向轴**的标签。两者按
+        `alpha_lab.stats.audit.combine_verdicts` 合并成**最终标签**，
+        最终标签在 `payload_json.overall_verdict` 中（`list_statistical_reviews`
+        会把它提升为顶层键 `overall_verdict`）。
+        """
+        run_id = review.get("run_id")
+        if not run_id:
+            raise ValueError("review requires run_id")
+
+        metrics = review.get("metrics") or {}
+        primary = review.get("primary_metric", "auc")
+        primary_item = metrics.get(primary) or {}
+
+        review_id = self.statistical_review_id(
+            run_id,
+            method_version,
+            int(review.get("bootstrap_samples", 0)),
+            int(review.get("random_state", 0)),
+        )
+
+        with self.connect() as conn:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO statistical_reviews (
+                    review_id, run_id, candidate_id, method_version,
+                    timeframe, horizon, n, n_eff, block_size,
+                    bootstrap_samples, primary_metric, effect, ci_low,
+                    ci_high, mde, adjusted_p, verdict, mechanism_verdict,
+                    payload_json, created_at
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """,
+                (
+                    review_id,
+                    run_id,
+                    candidate_id,
+                    method_version,
+                    review.get("timeframe"),
+                    review.get("horizon"),
+                    review.get("n"),
+                    (review.get("n_eff") or {}).get("design"),
+                    review.get("block_size"),
+                    review.get("bootstrap_samples"),
+                    primary,
+                    primary_item.get("point"),
+                    primary_item.get("ci_95_lower"),
+                    primary_item.get("ci_95_upper"),
+                    primary_item.get("mde"),
+                    primary_item.get("adjusted_p"),
+                    (review.get("verdict") or {}).get("label", "INCONCLUSIVE"),
+                    (review.get("mechanism_verdict") or {}).get("label"),
+                    json.dumps(review, sort_keys=True, allow_nan=False),
+                    utc_now(),
+                ),
+            )
+        return review_id
+
+    def list_statistical_reviews(
+        self, run_id: str | None = None
+    ) -> list[dict]:
+        """列出统计重评记录（读侧不修改数据库）。
+
+        返回的每行除表字段外，额外从 `payload_json` 提升两个便于读取的键：
+
+        - `overall_verdict`：**最终标签**（增量轴 + 机制轴合并后的结果）——
+          这才是和审计报告摘要一致的那个标签；
+        - `overall_reasons`：最终标签的理由列表。
+
+        注意表里的 `verdict` 列是**增量轴**标签，不要直接当成最终结论。
+        """
+        with self.connect() as conn:
+            if run_id is None:
+                rows = conn.execute(
+                    "SELECT * FROM statistical_reviews "
+                    "ORDER BY created_at, review_id"
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM statistical_reviews WHERE run_id = ? "
+                    "ORDER BY created_at, review_id",
+                    (run_id,),
+                ).fetchall()
+
+        reviews = []
+        for row in rows:
+            item = dict(row)
+            try:
+                payload = json.loads(item.get("payload_json") or "{}")
+            except (TypeError, ValueError):
+                payload = {}
+
+            overall = payload.get("overall_verdict") or {}
+            if isinstance(overall, dict):
+                item["overall_verdict"] = overall.get("label")
+                item["overall_reasons"] = list(overall.get("reasons") or [])
+            else:
+                item["overall_verdict"] = overall or None
+                item["overall_reasons"] = []
+
+            if not item["overall_verdict"]:
+                # 旧记录没有 overall_verdict：退回两轴合并规则
+                incremental = item.get("verdict")
+                mechanism = item.get("mechanism_verdict")
+                if "REJECTED" in (incremental, mechanism):
+                    item["overall_verdict"] = "REJECTED"
+                elif incremental == "SUPPORTED":
+                    item["overall_verdict"] = "SUPPORTED"
+                else:
+                    item["overall_verdict"] = "INCONCLUSIVE"
+
+            reviews.append(item)
+
+        return reviews

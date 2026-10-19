@@ -13,6 +13,9 @@ from alpha_lab.factors.registry import FactorSpec
 MIN_DATE = pd.Timestamp("2022-01-01", tz="UTC")
 MAX_DATE = pd.Timestamp("2025-01-01", tz="UTC")
 
+# 研究允许的 K 线周期。5m/15m/1h/4h 均有对应的期货历史数据。
+SUPPORTED_TIMEFRAMES = ("5m", "15m", "1h", "4h")
+
 
 def default_baseline_factors() -> tuple[FactorSpec, ...]:
     """Return the stable baseline used by candidate research commands."""
@@ -41,7 +44,7 @@ class ExperimentConfig:
         if self.symbol != "BTC/USDT:USDT":
             raise ValueError("Unsupported symbol")
 
-        if self.timeframe not in ("1h", "15m"):
+        if self.timeframe not in SUPPORTED_TIMEFRAMES:
             raise ValueError("Unsupported timeframe")
 
         if type(self.horizon) is not int or self.horizon <= 0:

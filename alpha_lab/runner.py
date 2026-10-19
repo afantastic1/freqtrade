@@ -8,6 +8,8 @@ import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
 
+from freqtrade.exchange import timeframe_to_seconds
+
 from alpha_lab.config import ExperimentConfig
 from alpha_lab.data.loader import load_ohlcv
 from alpha_lab.data.research_dataset import build_research_dataset
@@ -459,6 +461,14 @@ def _execute_experiment(
             "range": data_range,
             "rows": len(dataset),
             "label_horizon": config.horizon,
+            "label_horizon_seconds": (
+                timeframe_to_seconds(config.timeframe) * config.horizon
+            ),
+            "label_horizon_duration": str(
+                pd.Timedelta(
+                    seconds=timeframe_to_seconds(config.timeframe) * config.horizon
+                )
+            ),
         },
         model={
             **model_metadata,

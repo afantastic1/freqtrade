@@ -88,3 +88,22 @@ def test_research_code_identity_covers_factor_report_and_evidence():
     from alpha_lab import runner
     names = {path.name for path in runner.EVALUATION_CODE_PATHS}
     assert {"momentum.py", "factor_report.py", "evidence.py"} <= names
+
+
+@pytest.mark.parametrize("timeframe", ["5m", "15m", "1h", "4h"])
+def test_supported_timeframes_accepted(tmp_path, timeframe):
+    raw = valid_config()
+    raw["timeframe"] = timeframe
+
+    config = load_config(tmp_path, raw)
+
+    assert config.timeframe == timeframe
+
+
+@pytest.mark.parametrize("timeframe", ["1m", "30m", "2h", "1d", "1H"])
+def test_unsupported_timeframe_rejected(tmp_path, timeframe):
+    raw = valid_config()
+    raw["timeframe"] = timeframe
+
+    with pytest.raises(ValueError, match="Unsupported timeframe"):
+        load_config(tmp_path, raw)
