@@ -1,6 +1,8 @@
 # Alpha Lab candidate research
 
-Run one complete candidate study with the stable momentum(4, 12) baseline:
+**Construction gate:** The v1.1 multi-asset mode is not frozen. The restricted Research Agent may use only the exact `research_agent_cli` gateway; arbitrary `factor.py` execution is disabled for unattended research until an OS sandbox passes adversarial tests. See the [v1.1 status and CLI guide](../docs/alpha_lab/v1.1-implementation-status.md).
+
+Maintainer-only legacy command for a trusted candidate with the stable momentum(4, 12) baseline:
 
 ```bash
 python -m alpha_lab.candidate_cli run path/to/candidate

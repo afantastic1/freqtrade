@@ -29,3 +29,19 @@
 - Commit A 前全量：259 passed；冻结校验 RED→GREEN：2 passed。
 - OpenCode v2.0.29 权限矩阵、协议 RC、CODEOWNERS/CI、冻结 manifest 与维护文档已建立。
 - 候选隔离验收因当前宿主无法创建 network namespace 且现有 loader 为进程内导入而判定失败；记录为发布阻塞，不宣称 v1.0 完成。
+
+## 2026-10-19 — Alpha Lab v1.1 多资产横截面扩展
+- 前置 Git 审计：`my_dev` / `e49aa244ae`，工作树干净。
+- 基线全量：`262 passed in 19.89s`，2 个既有 pytest 插件配置警告。
+- 数据清单确认 BTC/ETH 有 5m、15m、1h、4h Feather；不实现下载器。
+- 按用户前置条件先进入 v1.0 P0/P1 遗留修复，再开展 v1.1 架构施工。
+- P0：统计复评身份含 `analysis_id/config_id`；同 run 不同 evidence 冲突拒绝；数据库任何 schema 补列/建表前通过 SQLite backup API 备份，迁移在 `BEGIN IMMEDIATE` 中完成；evaluation/candidate/decision/review 使用冲突保护，cs evidence 独立 append-only 表。
+- P1：总体与月度方向冲突回 INCONCLUSIVE，方向判定提升 `prereg-a-v3`；RankIC MDE 不再借用 LogLoss ESS，提升 `paired-mbb-centered-null-v3` 并将缺少 RankIC 序列的 MDE 明确置空；实验复用验证 summary/manifest/全部产物 hash，candidate manifest 与 hypothesis 进入 time_series research identity。
+- v1.1：增加 MarketPanel、固定/历史/动态 PIT Universe、固定相对因子变换、per-symbol gap 校验、raw/relative proxy labels、按 UTC 时间切分及 label-availability purge、训练数据 Ridge 和分截面评价。
+- v1.1：增加专用 `cs_evaluations` / `cs_research_decisions`、内容指纹/代码/config/Universe 研究身份、受损产物不复用、并发幂等、开发集 campaign Holm/BH 只读复核。
+- Research Agent 改用无参数 `research_agent_cli` 固定请求网关；OpenCode v2.0.29 的解析权限为 shell 默认拒绝、仅精确 gateway 命令允许、subagent 拒绝、edit 仅 candidates 允许。任意候选 Python 的进程级沙箱仍未通过，因此 Agent 的候选执行保持关闭。
+- 新增协议草案、示例配置、CLI/维护指南；本机只有 BTC/ETH，且 Feather loader 会先读文件再筛时间，故未读取历史行情做 smoke，避免意外触及 2025+。真实五资产、2025-safe panel smoke 仍未完成。
+- Append-only 完整性补强：ExperimentRegistry 对实验身份和状态转换安装 SQLite 触发器；ResearchStore 对 candidates/evaluations/research_decisions/statistical_reviews 安装禁止 UPDATE/DELETE 触发器；CrossSectionalStore 对横截面结果/决策安装同类约束。新增触发器前先通过 SQLite backup API 备份，并在事务内安装。
+- 本轮最新完整回归：`./.venv/bin/python -m pytest -o addopts='' -q alpha_lab/tests/`，`297 passed, 2 warnings in 25.60s`；`compileall -q alpha_lab` 与 `git diff --check` 均通过。
+- 冻结检查仍按预期失败：旧 v1.0 manifest 报出维护变更和新增核心文件。保留原 manifest，不以不完整验收覆盖旧基线。
+- 仍未满足 v1.1 发布门槛：任意 legacy Python candidate 的 OS 级隔离；具备日期证明的五资产 2022–2024 历史 panel smoke；cross-sectional 推断校准及 SUPPORTED 决策合同；受保护分支设置核验。当前状态仍是 draft/unfrozen。

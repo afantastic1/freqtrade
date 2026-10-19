@@ -146,6 +146,25 @@ def _load_reusable_summary(
                 candidate_manifest_path.read_bytes()
             ).hexdigest()
             archived_spec = submit_candidate(candidate_manifest_path.parent)
+            artifacts = manifest["artifacts"]
+            if not isinstance(artifacts, dict) or not artifacts:
+                raise ValueError("missing artifact hash map")
+            actual_artifacts = {
+                path.relative_to(result_dir).as_posix()
+                for path in result_dir.rglob("*")
+                if path.is_file() and path.name != "manifest.json"
+            }
+            if actual_artifacts != set(artifacts):
+                raise ValueError("artifact set changed")
+            if any(
+                hashlib.sha256((result_dir / relative).read_bytes()).hexdigest() != digest
+                for relative, digest in artifacts.items()
+            ):
+                raise ValueError("artifact hash mismatch")
+            if summary.get("prediction_rows") is not None and not {
+                "predictions.csv", "fold_metrics.csv"
+            } <= set(artifacts):
+                raise ValueError("missing required prediction artifacts")
         except (OSError, ValueError, KeyError, TypeError):
             invalid_run_ids.append(record["run_id"])
             continue
@@ -160,6 +179,9 @@ def _load_reusable_summary(
             or archived.get("name") != candidate.name
             or archived.get("source_hash") != candidate.source_hash
             or archived.get("manifest_hash") != candidate_manifest_hash
+            or candidate_manifest_hash != hashlib.sha256(
+                (candidate.source_path.parent / "candidate.json").read_bytes()
+            ).hexdigest()
             or source_hash != candidate.source_hash
             or archived_spec.source_hash != candidate.source_hash
             or archived_spec.parameters != candidate.parameters
@@ -569,6 +591,10 @@ def run_experiment(config_path: str | Path,
         raw["candidate"] = {
             "name": candidate.name,
             "source_hash": candidate.source_hash,
+            "manifest_hash": hashlib.sha256(
+                (candidate.source_path.parent / "candidate.json").read_bytes()
+            ).hexdigest(),
+            "hypothesis": candidate.hypothesis,
             "parameters": candidate.parameters,
             "prediction_horizon": candidate.prediction_horizon,
             "required_columns": list(candidate.required_columns),
@@ -714,6 +740,26 @@ def run_experiment(config_path: str | Path,
             config_hash=config_hash,
             candidate_dir=execution_candidate_dir,
         )
+        if candidate is not None:
+            output_dir = OUTPUT_ROOT / run_id
+            manifest_path = output_dir / "manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            artifacts = {
+                path.relative_to(output_dir).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+                for path in output_dir.rglob("*")
+                if path.is_file() and path.name != "manifest.json"
+            }
+            if summary.get("prediction_rows") is not None and not {
+                "predictions.csv", "fold_metrics.csv"
+            } <= set(artifacts):
+                raise ValueError("completed experiment missing prediction artifacts")
+            manifest["artifacts"] = artifacts
+            temp_manifest = output_dir / "manifest.json.tmp"
+            temp_manifest.write_text(
+                json.dumps(manifest, sort_keys=True, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            temp_manifest.replace(manifest_path)
 
     except Exception as exc:
         registry.fail_run(

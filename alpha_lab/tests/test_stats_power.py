@@ -160,6 +160,35 @@ def test_centered_bootstrap_null_is_not_automatically_significant():
     assert rejected <= 5
 
 
+def test_centered_bootstrap_correlated_null_monte_carlo():
+    """Paired null with serially dependent labels and prediction noise."""
+    rejected = {"auc": 0, "logloss": 0}
+    for seed in range(60):
+        rng = np.random.default_rng(seed + 20261020)
+        n = 400
+        rho = (0.0, 0.5, 0.9)[seed % 3]
+        label_persistence = (0.5, 0.8, 0.95)[(seed // 3) % 3]
+        block_size = (4, 20, 40)[(seed // 9) % 3]
+        y = np.empty(n, dtype=int)
+        y[0] = int(rng.integers(0, 2))
+        for i in range(1, n):
+            y[i] = y[i - 1] if rng.random() < label_persistence else 1 - y[i - 1]
+        noise = np.empty(n)
+        noise[0] = 0.0
+        for i in range(1, n):
+            scale = 0.01 if seed % 4 == 3 and i < n // 2 else 0.02
+            noise[i] = rho * noise[i - 1] + rng.normal(0, scale * np.sqrt(1 - rho ** 2))
+        base = np.clip(0.5 + noise, 0.01, 0.99)
+        combined = np.clip(0.5 - noise, 0.01, 0.99)
+        result = paired_block_bootstrap(
+            y, base, combined, block_size=block_size, n_boot=99,
+            random_state=seed, metrics=("auc", "logloss"))
+        for name in rejected:
+            rejected[name] += result[name].p_two_sided < 0.05
+    assert rejected["auc"] <= 8
+    assert rejected["logloss"] <= 8
+
+
 def test_paired_bootstrap_rejects_misaligned_inputs():
     with pytest.raises(ValueError):
         paired_block_bootstrap(

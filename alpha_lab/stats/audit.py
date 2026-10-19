@@ -172,7 +172,7 @@ def rank_ic_sign_evidence(
     negative_ratio: float | None,
     valid_months: int | None,
     *,
-    n_eff: float,
+    n_eff: float | None = None,
 ) -> dict:
     """用逐月 RankIC 的符号检验评估机制方向。
 
@@ -189,6 +189,10 @@ def rank_ic_sign_evidence(
         "sign_test_p": None,
         "observed_sign": None,
         "monthly_observed_sign": None,
+        "mde_assumption": (
+            "Fisher approximation with statistic-specific n_eff" if n_eff is not None
+            else "unavailable: saved artifacts lack the RankIC time series"
+        ),
     }
 
     if rank_ic is not None and np.isfinite(rank_ic):
@@ -308,7 +312,6 @@ def audit_run(
         (factor_block.get("overall") or {}).get("rank_ic"),
         factor_stability.get("negative_rank_ic_ratio"),
         factor_stability.get("valid_months"),
-        n_eff=ess.n_eff,
     )
 
     direction_consistent = None

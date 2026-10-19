@@ -69,3 +69,17 @@
 - OpenCode 可执行文件位于 `/home/von/.nvm/versions/node/v20.20.2/bin/opencode`，首次版本查询因默认日志目录只读失败，需用临时 XDG 目录重试并检查真实配置解析。
 - OpenCode 实测为 v2.0.29；官方权限文档确认 `permission`、通配模式、last-match-wins、`task` 与 `external_directory` 语法。受限 Agent 已按默认拒绝加精确允许配置。
 - Bubblewrap 基础 user/PID/IPC/UTS 隔离可运行；当前托管环境创建 network namespace 失败。现有 candidate loader 仍在可信进程导入任意 Python，因此安全验收不通过，必须禁止无人值守候选执行并保持 RC 状态。
+
+## Alpha Lab v1.1 前置审计
+- 起始分支 `my_dev`，HEAD `e49aa244ae`，工作树干净；Alpha Lab 基线 `262 passed`。
+- v1.0 独立审查遗留会阻塞 v1.1：evaluations/candidates 仍 UPSERT、旧库迁移无自动备份、复用未校验全部产物、Direction A 总体 RankIC 符号未参与终判、RankIC MDE 复用 logloss ESS、候选完整 manifest/family 未进身份。
+- 本地 Freqtrade Feather 可用资产为 BTC、ETH，覆盖 5m/15m/1h/4h；后续只读 smoke 使用 2022–2024 过滤结果，不接触 2025+。
+- v1.1 必须新建独立 panel/dataset/evaluator/runner/schema；旧 `evaluate_factor` 不承担 CS-IC。
+
+## v1.1 施工中追加结论
+- 已有实现分别位于 `data/market_panel.py`、`data/universe.py`、`data/cross_sectional_dataset.py`、`labels/cross_sectional.py`、`evaluation/cross_sectional.py`、`evaluation/cross_sectional_evaluator.py`、`models/cross_sectional.py` 与 `cross_sectional_runner.py`；SQLite 结果与决策进入独立附属表。
+- 任意候选 Python 未获得 OS 级隔离。Research Agent 不再允许调用 legacy `candidate_cli run`，只允许固定变换的无参数 gateway；gateway 在运行期严格验证请求字段、固定 config/panel 根目录和 symlink。
+- OpenCode v2.0.29 实测将 agent YAML `bash` 归一为 `shell`、`task` 归一为 `subagent`；当前 Alpha Researcher 规则解析出 shell 全拒绝加单条精确 gateway allow、subagent 全拒绝、edit 限定 candidates。
+- 本轮测试使用合成数据完成，无读取行情 Feather，因此没有触及 2025+。本地可见 BTC 与 ETH 两个标的，不够构造 `min_assets=5` 的有效横截面；真实 CS 历史烟雾被数据与安全日期边界阻塞。
+- CS Bootstrap Monte Carlo 当前改为多种 label persistence、prediction AR 相关及变化方差结构；其结果必须先完成后写入结论。协议把 CS 结果限定为 diagnostic 状态，不生成 SUPPORTED/REJECTED。
+- `alpha_lab.freeze` 仍针对 v1.0 基线，因此现有 Maintainer 修复和新模块会被报告为 changed/untracked。冻结清单需在安全与数据验收之后生成新的版本基线，当前不得更新旧 manifest 来暗示完成。

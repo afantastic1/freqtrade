@@ -3,6 +3,7 @@ import json
 import math
 import sqlite3
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 from alpha_lab.experiment_registry import utc_now
@@ -91,7 +92,52 @@ class ResearchStore:
         return conn
 
     def _initialize(self):
+        with self.connect() as source:
+            tables = {
+                row[0] for row in source.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                )
+            }
+            if "experiments" not in tables:
+                raise ValueError("experiments table missing; initialize ExperimentRegistry first")
+            expected = {
+                "candidates": CANDIDATE_COLUMNS,
+                "evaluations": EVALUATION_COLUMNS,
+                "statistical_reviews": STATISTICAL_REVIEW_COLUMNS,
+                "research_decisions": {},
+            }
+            expected_triggers = {
+                f"{table}_{operation}_immutable"
+                for table in (
+                    "candidates", "evaluations", "research_decisions",
+                    "statistical_reviews",
+                )
+                for operation in ("update", "delete")
+            } | {"evaluations_parent_insert", "evaluations_parent_update"}
+            existing_triggers = {
+                row[0] for row in source.execute(
+                    "SELECT name FROM sqlite_master WHERE type='trigger'"
+                )
+            }
+            migration_needed = any(
+                table not in tables or bool(
+                    set(columns) - {
+                        row[1] for row in source.execute(f"PRAGMA table_info({table})")
+                    }
+                )
+                for table, columns in expected.items()
+            ) or not expected_triggers.issubset(existing_triggers)
+            if migration_needed:
+                stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+                backup_path = self.db_path.with_name(
+                    f"{self.db_path.name}.backup-{stamp}"
+                )
+                with sqlite3.connect(backup_path) as backup:
+                    source.backup(backup)
+                    if backup.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+                        raise RuntimeError("database backup integrity check failed")
         with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
             if conn.execute(
                 "SELECT 1 FROM sqlite_master WHERE type='table' "
                 "AND name='experiments'"
@@ -245,6 +291,24 @@ class ResearchStore:
                     SELECT RAISE(ABORT, 'evaluation foreign key violation');
                 END
             """)
+            for table in (
+                "candidates", "evaluations", "research_decisions",
+                "statistical_reviews",
+            ):
+                conn.execute(f"""
+                    CREATE TRIGGER IF NOT EXISTS {table}_update_immutable
+                    BEFORE UPDATE ON {table}
+                    BEGIN
+                        SELECT RAISE(ABORT, '{table} is append-only');
+                    END
+                """)
+                conn.execute(f"""
+                    CREATE TRIGGER IF NOT EXISTS {table}_delete_immutable
+                    BEFORE DELETE ON {table}
+                    BEGIN
+                        SELECT RAISE(ABORT, '{table} is append-only');
+                    END
+                """)
 
     @staticmethod
     def _add_missing_columns(conn, table: str, definitions: dict):
@@ -422,6 +486,13 @@ class ResearchStore:
             ).fetchone()
             if existing is not None and existing["candidate_id"] != candidate_id:
                 raise ValueError("Run already bound to different candidate_id")
+            if existing is not None:
+                saved = conn.execute(
+                    "SELECT * FROM evaluations WHERE run_id = ?", (run_id,)
+                ).fetchone()
+                stable_columns = set(values) - {"indexed_at"}
+                if any(saved[key] != values[key] for key in stable_columns):
+                    raise ValueError("conflicting evaluation evidence for run_id")
 
             candidate_manifest_json = _canonical_json(candidate_manifest)
             existing_candidate = conn.execute(
@@ -435,11 +506,31 @@ class ResearchStore:
                     )
                 except (TypeError, ValueError):
                     merged_manifest = {}
+                for key, value in candidate_manifest.items():
+                    if (
+                        value is not None and merged_manifest.get(key) is not None
+                        and merged_manifest[key] != value
+                    ):
+                        raise ValueError("conflicting candidate manifest evidence")
                 merged_manifest.update({
                     key: value for key, value in candidate_manifest.items()
                     if value is not None
                 })
                 candidate_manifest_json = _canonical_json(merged_manifest)
+
+            if existing_candidate is not None:
+                saved_candidate = conn.execute(
+                    "SELECT name, source_hash, parameters_json, hypothesis "
+                    "FROM candidates WHERE candidate_id = ?", (candidate_id,)
+                ).fetchone()
+                if (
+                    saved_candidate["name"] != candidate["name"]
+                    or saved_candidate["source_hash"] != candidate["source_hash"]
+                    or saved_candidate["parameters_json"] != _canonical_json(
+                        candidate.get("parameters") or {}
+                    )
+                ):
+                    raise ValueError("conflicting candidate evidence for candidate_id")
 
             conn.execute("""
                 INSERT INTO candidates (
@@ -447,11 +538,7 @@ class ResearchStore:
                     hypothesis, source_path, snapshot_path, manifest_json,
                     created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(candidate_id) DO UPDATE SET
-                    hypothesis = COALESCE(candidates.hypothesis, excluded.hypothesis),
-                    source_path = COALESCE(candidates.source_path, excluded.source_path),
-                    snapshot_path = COALESCE(candidates.snapshot_path, excluded.snapshot_path),
-                    manifest_json = excluded.manifest_json
+                ON CONFLICT(candidate_id) DO NOTHING
             """, (
                 candidate_id,
                 candidate["name"],
@@ -464,17 +551,12 @@ class ResearchStore:
                 candidate_manifest_json,
                 utc_now(),
             ))
-
             columns = list(values)
             placeholders = ", ".join("?" for _ in columns)
-            updates = ", ".join(
-                f"{column}=excluded.{column}"
-                for column in columns if column not in {"run_id", "candidate_id"}
-            )
             conn.execute(
                 f"INSERT INTO evaluations ({', '.join(columns)}) "
                 f"VALUES ({placeholders}) "
-                f"ON CONFLICT(run_id) DO UPDATE SET {updates}",
+                f"ON CONFLICT(run_id) DO NOTHING",
                 tuple(values[column] for column in columns),
             )
 
@@ -557,7 +639,30 @@ class ResearchStore:
             if identity["status"] != "completed":
                 raise ValueError("Research Decision run is not completed")
             if identity["candidate_id"] is None:
-                raise ValueError("Research Decision run is not indexed")
+                cs_table = conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='cs_evaluations'"
+                ).fetchone()
+                cs_row = (conn.execute("SELECT payload_json FROM cs_evaluations WHERE run_id=?",
+                                       (run_id,)).fetchone() if cs_table else None)
+                if cs_row is None:
+                    raise ValueError("Research Decision run is not indexed")
+                cs_evidence = json.loads(cs_row["payload_json"])
+                if cs_evidence.get("candidate_source_hash") != candidate_source_hash:
+                    raise ValueError("candidate source_hash does not match run")
+                conn.execute("""
+                    INSERT INTO cs_research_decisions (
+                        decision_id, run_id, candidate_source_hash,
+                        supporting_evidence_json, opposing_evidence_json,
+                        conclusion_json, next_hypothesis_json, next_actions_json,
+                        agent_identity, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (decision_id, run_id, candidate_source_hash,
+                      payloads["supporting_evidence_json"], payloads["opposing_evidence_json"],
+                      payloads["conclusion_json"], payloads["next_hypothesis_json"],
+                      payloads["next_actions_json"], agent_identity, created_at))
+                row = conn.execute("SELECT *, NULL AS candidate_id FROM cs_research_decisions WHERE decision_id=?",
+                                   (decision_id,)).fetchone()
+                return self._decision_from_row(row)
             if identity["source_hash"] != candidate_source_hash:
                 raise ValueError("candidate source_hash does not match run")
 
@@ -589,12 +694,15 @@ class ResearchStore:
 
     def list_decisions(self, run_id: str) -> list[dict]:
         with self.connect() as conn:
-            rows = conn.execute("""
+            rows = list(conn.execute("""
                 SELECT * FROM research_decisions
                 WHERE run_id = ?
                 ORDER BY created_at, decision_id
-            """, (run_id,)).fetchall()
-        return [self._decision_from_row(row) for row in rows]
+            """, (run_id,)).fetchall())
+            if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='cs_research_decisions'").fetchone():
+                rows.extend(conn.execute("SELECT *, NULL AS candidate_id FROM cs_research_decisions WHERE run_id=?",
+                                         (run_id,)).fetchall())
+        return [self._decision_from_row(row) for row in sorted(rows, key=lambda row: (row["created_at"], row["decision_id"]))]
 
     def show_run(self, run_id: str) -> dict | None:
         with self.connect() as conn:
@@ -609,10 +717,19 @@ class ResearchStore:
                 LEFT JOIN candidates c ON c.candidate_id = e.candidate_id
                 WHERE x.run_id = ?
             """, (run_id,)).fetchone()
+            cs_row = None
+            if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='cs_evaluations'").fetchone():
+                cs_row = conn.execute("SELECT payload_json FROM cs_evaluations WHERE run_id=?",
+                                      (run_id,)).fetchone()
         if row is None:
             return None
         result = dict(row)
         result["run_id"] = result.pop("parent_run_id")
+        if cs_row is not None:
+            result["mode"] = "cross_sectional"
+            result["cross_sectional_evidence"] = json.loads(cs_row["payload_json"])
+        else:
+            result["mode"] = "time_series"
         return result
 
     def list_runs(
@@ -647,7 +764,15 @@ class ResearchStore:
                 ORDER BY x.started_at DESC, x.run_id DESC
                 LIMIT ?
             """, parameters).fetchall()
-        return [dict(row) for row in rows]
+            result = [dict(row) for row in rows]
+            if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='cs_evaluations'").fetchone():
+                cs_ids = {row[0] for row in conn.execute("SELECT run_id FROM cs_evaluations WHERE run_id IN (" +
+                        ",".join("?" for _ in result) + ")", [row["run_id"] for row in result])} if result else set()
+            else:
+                cs_ids = set()
+        for item in result:
+            item["mode"] = "cross_sectional" if item["run_id"] in cs_ids else "time_series"
+        return result
 
     # ------------------------------------------------------------------
     # 统计重评（append-only）

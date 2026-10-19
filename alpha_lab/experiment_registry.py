@@ -34,7 +34,23 @@ class ExperimentRegistry:
         return conn
 
     def _initialize(self):
+        if self.db_path.is_file() and self.db_path.stat().st_size:
+            with sqlite3.connect(self.db_path) as current:
+                tables = {row[0] for row in current.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'")}
+                triggers = {row[0] for row in current.execute(
+                    "SELECT name FROM sqlite_master WHERE type='trigger'")}
+                expected = {"experiments_immutable", "experiments_status_transition",
+                            "experiments_no_delete"}
+                if "experiments" in tables and not expected.issubset(triggers):
+                    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+                    backup_path = self.db_path.with_name(f"{self.db_path.name}.backup-{stamp}")
+                    with sqlite3.connect(backup_path) as backup:
+                        current.backup(backup)
+                        if backup.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+                            raise RuntimeError("database backup integrity check failed")
         with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS experiments (
                     run_id TEXT PRIMARY KEY,
@@ -58,6 +74,21 @@ class ExperimentRegistry:
                     idx_experiments_config_hash
                 ON experiments(config_hash)
             """)
+            conn.execute("""CREATE TRIGGER IF NOT EXISTS experiments_immutable
+                BEFORE UPDATE ON experiments
+                WHEN NEW.run_id != OLD.run_id OR NEW.config_hash != OLD.config_hash
+                  OR NEW.started_at != OLD.started_at OR NEW.config_json != OLD.config_json
+                  OR COALESCE(NEW.code_version,'') != COALESCE(OLD.code_version,'')
+                  OR COALESCE(NEW.data_fingerprint,'') != COALESCE(OLD.data_fingerprint,'')
+                BEGIN SELECT RAISE(ABORT, 'experiment identity is immutable'); END""")
+            conn.execute("""CREATE TRIGGER IF NOT EXISTS experiments_status_transition
+                BEFORE UPDATE ON experiments
+                WHEN NOT (OLD.status='running' AND NEW.status IN ('completed','failed')
+                          AND NEW.finished_at IS NOT NULL)
+                BEGIN SELECT RAISE(ABORT, 'invalid experiment state transition'); END""")
+            conn.execute("""CREATE TRIGGER IF NOT EXISTS experiments_no_delete
+                BEFORE DELETE ON experiments
+                BEGIN SELECT RAISE(ABORT, 'experiments are append-only'); END""")
 
     def create_run(
         self,
@@ -66,8 +97,9 @@ class ExperimentRegistry:
         config_json: str,
         code_version: str | None = None,
         data_fingerprint: str | None = None,
+        run_id: str | None = None,
     ) -> str:
-        run_id = uuid.uuid4().hex
+        run_id = run_id or uuid.uuid4().hex
 
         with self._connect() as conn:
             conn.execute("""

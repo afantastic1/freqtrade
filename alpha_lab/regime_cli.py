@@ -74,7 +74,7 @@ END = "2025-01-01"
 TRAIN = ("2022-01-01", "2022-10-01")
 TEST = ("2023-01-01", "2025-01-01")
 
-METHOD_VERSION = "prereg-a-v2"
+METHOD_VERSION = "prereg-a-v3"
 DECISION_LOG = "prereg_decisions.jsonl"
 
 METRICS = ("auc", "logloss", "brier")
@@ -402,7 +402,7 @@ def run_config(
         }
 
     mechanisms_evidence = rank_ic_sign_evidence(
-        mechanism["monthly_mean_difference"],
+        mechanism["point"],
         mechanism["monthly_negative_ratio"],
         mechanism["monthly_months"],
         n_eff=float(mechanism["monthly_months"]),
@@ -508,10 +508,17 @@ def finalize(results: list[dict], policy: VerdictPolicy | None = None) -> dict:
             policy=policy,
         )
         direction_consistent = (
-            int(np.sign(result["mechanism"]["monthly_mean_difference"]))
+            int(np.sign(result["mechanism"]["point"]))
             == int(result["config"]["preregistered_sign"])
-            if np.isfinite(result["mechanism"]["monthly_mean_difference"])
+            if np.isfinite(result["mechanism"]["point"])
             else None
+        )
+        observed = int(np.sign(result["mechanism"]["point"])) if direction_consistent is not None else None
+        result["mechanism_evidence"]["observed_sign"] = observed
+        ratio = result["mechanism"].get("monthly_negative_ratio")
+        result["mechanism_evidence"]["monthly_observed_sign"] = (
+            -1 if ratio is not None and ratio > 0.5 else
+            1 if ratio is not None and ratio < 0.5 else None
         )
         mechanism = _mechanism_verdict(
             result["mechanism_evidence"], direction_consistent, policy

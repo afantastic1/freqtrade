@@ -141,6 +141,20 @@ def test_same_size_and_mtime_data_replacement_does_not_reuse(tmp_path, monkeypat
     assert len(calls) == 2
 
 
+def test_changed_candidate_hypothesis_has_distinct_research_identity(tmp_path, monkeypatch):
+    calls, _ = setup_runner(tmp_path, monkeypatch)
+    candidate = create_candidate(tmp_path)
+    config = create_config(tmp_path)
+    first = runner.run_experiment(config, candidate_dir=candidate)
+    manifest = candidate / "candidate.json"
+    raw = json.loads(manifest.read_text())
+    raw["hypothesis"] = "A distinct registered research question."
+    manifest.write_text(json.dumps(raw))
+    second = runner.run_experiment(config, candidate_dir=candidate)
+    assert second["run_id"] != first["run_id"]
+    assert len(calls) == 2
+
+
 def test_corrupt_completed_artifacts_are_not_reused(tmp_path, monkeypatch):
     calls, _ = setup_runner(tmp_path, monkeypatch)
     candidate = create_candidate(tmp_path)
@@ -164,6 +178,19 @@ def test_missing_candidate_manifest_is_not_reused(tmp_path, monkeypatch):
 
     second = runner.run_experiment(config, candidate_dir=candidate)
 
+    assert second["run_id"] != first["run_id"]
+    assert len(calls) == 2
+
+
+def test_changed_prediction_artifact_is_not_reused(tmp_path, monkeypatch):
+    calls, _ = setup_runner(tmp_path, monkeypatch)
+    candidate = create_candidate(tmp_path)
+    config = create_config(tmp_path)
+    first = runner.run_experiment(config, candidate_dir=candidate)
+    output = runner.OUTPUT_ROOT / first["run_id"]
+    (output / "predictions.csv").write_text("a,b\n1,2\n", encoding="utf-8")
+    # A file added after sealing is also a changed artifact set.
+    second = runner.run_experiment(config, candidate_dir=candidate)
     assert second["run_id"] != first["run_id"]
     assert len(calls) == 2
 

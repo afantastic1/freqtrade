@@ -7,6 +7,7 @@ import pytest
 
 from alpha_lab import prereg_record
 from alpha_lab.research_store import ResearchStore
+from alpha_lab.experiment_registry import ExperimentRegistry
 
 
 def _review(run_id: str, *, horizon: int, effect: float) -> dict:
@@ -133,6 +134,33 @@ def test_review_identity_includes_analysis_and_config(tmp_path: Path):
     assert {(r["analysis_id"], r["config_id"]) for r in rows} == {
         ("analysis-4", "config-4"), ("analysis-8", "config-8")
     }
+
+
+def test_regime_a1_a2_same_run_persist_independently_and_idempotently(tmp_path: Path):
+    db = tmp_path / "experiments.sqlite3"
+    registry = ExperimentRegistry(db)
+    run_id = registry.create_run(config_hash="regime-suite", config_json="{}")
+    registry.complete_run(run_id, tmp_path / "run")
+    store = ResearchStore(db)
+    a1 = _review(run_id, horizon=4, effect=0.01)
+    a1.update(analysis_id="A-1", config_id="A-1")
+    a2 = _review(run_id, horizon=4, effect=0.02)
+    a2.update(analysis_id="A-2", config_id="A-2")
+    first_ids = [store.record_statistical_review(row, method_version="regime-v3")
+                 for row in (a1, a2)]
+    retry_ids = [store.record_statistical_review(row, method_version="regime-v3")
+                 for row in (a1, a2)]
+    assert first_ids[0] != first_ids[1]
+    assert retry_ids == first_ids
+    persisted = store.list_statistical_reviews(run_id)
+    assert {(row["analysis_id"], row["config_id"], row["effect"]) for row in persisted} == {
+        ("A-1", "A-1", 0.01), ("A-2", "A-2", 0.02)
+    }
+    conflict = dict(a1)
+    conflict["metrics"] = {"auc": {**a1["metrics"]["auc"], "point": 0.03}}
+    with pytest.raises(ValueError, match="conflicting statistical review"):
+        store.record_statistical_review(conflict, method_version="regime-v3")
+    assert {row["effect"] for row in store.list_statistical_reviews(run_id)} == {0.01, 0.02}
 
 
 def test_append_decisions_is_append_only_and_idempotent(tmp_path: Path):

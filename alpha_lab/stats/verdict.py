@@ -274,7 +274,7 @@ def combine_verdicts(
 
     if inc == REJECTED or mech == REJECTED:
         label = REJECTED
-    elif inc == SUPPORTED:
+    elif inc == SUPPORTED and "OVERALL_MONTHLY_DIRECTION_CONFLICT" not in mechanism.get("reasons", []):
         label = SUPPORTED
     else:
         label = INCONCLUSIVE

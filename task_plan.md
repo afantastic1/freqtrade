@@ -48,12 +48,40 @@
 ## 当前状态
 阶段 5：in_progress；阶段 4 的强隔离验收 blocked，禁止宣称 v1.0 完成
 
+---
+
+# Alpha Lab v1.1 多资产横截面扩展（2026-10-19）
+
+## 目标
+先完成 v1.0 遗留 P0/P1，再在保持单资产接口和历史证据兼容的前提下，增加多资产 point-in-time MarketPanel、Universe、独立横截面评价/模型/Runner、专用 append-only SQLite 结果与受限 Agent 接口。
+
+## 阶段
+- [x] 0. 修复 v1.0 遗留 P0/P1：证据冲突、事务备份、方向/MDE、身份与产物复用
+- [x] 1. 写入 v1.1 协议草案、示例配置与实施/维护说明
+- [x] 2. TDD 实现 MarketPanel、数据质量和 point-in-time Universe
+- [x] 3. TDD 实现固定 CS 变换、相对标签、时间 purge/embargo
+- [x] 4. TDD 实现 CrossSectionalEvaluator、统计功效与合成 Golden Tests
+- [x] 5. TDD 实现 Ridge、独立 Runner/CLI、append-only SQLite schema 和身份复用
+- [x] 6. 更新 Research Agent 网关、协议、权限解析检查及兼容性说明
+- [ ] 7. 完成扩样统计校准、五资产 2022–2024 只读烟雾、OS 隔离测试、完整冻结和独立审查
+
+## 当前状态
+阶段 7：blocked on environment/data/security acceptance; v1.1 remains draft and is not frozen.
+
+## 约束
+- 不读取 2025+，不下载新数据，不开展因子挖掘，不触碰 Freqtrade 交易执行。
+- v1.0 time_series 接口、历史实验、统计结果和数据库行保持兼容。
+- 横截面统计按时间截面推断，资产数不冒充独立时间样本。
+- 初版跨资产逻辑仅允许冻结变换；不开放任意跨资产 Python。
+- 全部验收通过前不宣称 v1.1 冻结。
+
 ## 本轮约束
 - 不丢弃或回滚当前 12 个修改/新增文件；重叠修改先辨明意图再兼容整合。
 - 不读取 2025+ 保留数据，不开展新因子研究，不修改 Freqtrade 交易执行引擎。
 - 数据库迁移前备份并在事务内执行；历史证据只追加或兼容读取，不原地改写。
 - 生产代码遵循 TDD；统计定义变更提升 method_version 并记录 Golden 差异。
 - 只有全部安全与统计验收满足后才建议 v1.0；否则明确列为未完成。
+- v1.1 当前完成的是合成数据引擎施工，不等于有足够历史 Universe、校准推断、OS 沙箱或可发布基线。
 
 ## 本轮错误记录
 | 错误 | 次数 | 处理 |

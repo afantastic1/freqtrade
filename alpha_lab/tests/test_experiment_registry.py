@@ -1,5 +1,6 @@
 
 import pytest
+import sqlite3
 
 from alpha_lab.experiment_registry import ExperimentRegistry
 
@@ -105,3 +106,18 @@ def test_unknown_run(tmp_path):
             "missing",
             tmp_path / "result",
         )
+
+
+def test_experiment_identity_and_history_are_append_only(tmp_path):
+    db = tmp_path / "experiments.db"
+    registry = ExperimentRegistry(db)
+    run_id = registry.create_run(config_hash="key", config_json="{}")
+    with sqlite3.connect(db) as conn:
+        with pytest.raises(sqlite3.IntegrityError, match="immutable|state transition"):
+            conn.execute("UPDATE experiments SET config_hash='other' WHERE run_id=?", (run_id,))
+        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+            conn.execute("DELETE FROM experiments WHERE run_id=?", (run_id,))
+    registry.complete_run(run_id, tmp_path / "result")
+    with sqlite3.connect(db) as conn:
+        with pytest.raises(sqlite3.IntegrityError, match="state transition"):
+            conn.execute("UPDATE experiments SET status='running' WHERE run_id=?", (run_id,))

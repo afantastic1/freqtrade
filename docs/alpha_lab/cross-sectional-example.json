@@ -1,0 +1,32 @@
+{
+  "mode": "cross_sectional",
+  "hypothesis": "Relative momentum will predict subsequent relative returns in the declared USD-M universe.",
+  "symbols": ["BTC/USDT:USDT", "ETH/USDT:USDT", "SOL/USDT:USDT", "BNB/USDT:USDT", "XRP/USDT:USDT"],
+  "timeframe": "1h",
+  "horizon": 4,
+  "start": "2022-01-01T00:00:00+00:00",
+  "end": "2025-01-01T00:00:00+00:00",
+  "train_end": "2023-01-01T00:00:00+00:00",
+  "test_end": "2025-01-01T00:00:00+00:00",
+  "universe": {
+    "kind": "dynamic",
+    "id": "liquid-five-v1",
+    "symbols": ["BTC/USDT:USDT", "ETH/USDT:USDT", "SOL/USDT:USDT", "BNB/USDT:USDT", "XRP/USDT:USDT"],
+    "lookback": 168,
+    "min_listing_bars": 720,
+    "min_coverage": 0.95,
+    "min_quote_volume": 1000000
+  },
+  "features": [
+    {"name": "relative_momentum", "periods": 4},
+    {"name": "relative_volatility", "periods": 24},
+    {"name": "relative_volume", "periods": 24}
+  ],
+  "ridge_alpha": 1.0,
+  "target": "relative_return",
+  "n_boot": 999,
+  "block_size": 24,
+  "min_assets": 5,
+  "cost_bps": 10,
+  "family_id": "2022-2024-usdm-cs-development"
+}

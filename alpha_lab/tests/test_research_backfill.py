@@ -6,11 +6,7 @@ from alpha_lab.research_store import ResearchStore
 
 def add_parent(db, run_id, run_dir):
     registry = ExperimentRegistry(db)
-    created = registry.create_run(config_hash=run_id, config_json="{}")
-    with registry._connect() as conn:
-        conn.execute(
-            "UPDATE experiments SET run_id=? WHERE run_id=?", (run_id, created)
-        )
+    created = registry.create_run(config_hash=run_id, config_json="{}", run_id=run_id)
     registry.complete_run(run_id, run_dir)
 
 

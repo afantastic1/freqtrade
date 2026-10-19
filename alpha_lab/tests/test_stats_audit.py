@@ -101,6 +101,13 @@ def test_rank_ic_sign_evidence_binomial_and_fisher_mde():
     assert neutral["sign_test_p"] > 0.5
 
 
+def test_rank_ic_mde_is_unavailable_without_rank_ic_specific_dependence():
+    evidence = rank_ic_sign_evidence(0.03, 0.2, 20)
+    assert evidence["fisher_se"] is None
+    assert evidence["mde_rank_ic"] is None
+    assert "lack the RankIC time series" in evidence["mde_assumption"]
+
+
 def test_monthly_gain_stability_counts_signs_by_month():
     times = pd.to_datetime(
         ["2023-01-01", "2023-01-15", "2023-02-01", "2023-02-15"], utc=True
@@ -309,12 +316,7 @@ def _make_audit_payload(run_id="run-1"):
 
 def _create_run(db_path: Path, run_id: str) -> None:
     registry = ExperimentRegistry(db_path)
-    created = registry.create_run(config_hash="key", config_json="{}")
-    with sqlite3.connect(db_path) as conn:
-        conn.execute(
-            "UPDATE experiments SET run_id = ? WHERE run_id = ?",
-            (run_id, created),
-        )
+    created = registry.create_run(config_hash="key", config_json="{}", run_id=run_id)
     registry.complete_run(run_id, db_path.parent / "results")
 
 

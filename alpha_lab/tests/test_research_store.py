@@ -13,14 +13,7 @@ def make_store(db_path):
 
 def completed_run(db_path, result_dir, run_id=None):
     registry = ExperimentRegistry(db_path)
-    created = registry.create_run(config_hash="key", config_json="{}")
-    if run_id is not None:
-        with sqlite3.connect(db_path) as conn:
-            conn.execute(
-                "UPDATE experiments SET run_id = ? WHERE run_id = ?",
-                (run_id, created),
-            )
-        created = run_id
+    created = registry.create_run(config_hash="key", config_json="{}", run_id=run_id)
     registry.complete_run(created, result_dir)
     return created
 
@@ -212,6 +205,35 @@ def test_research_store_idempotency_and_conflict(tmp_path):
         store.index_summary(run_id, summary)
 
 
+def test_reindex_changed_evidence_rejects_without_overwrite(tmp_path):
+    db = tmp_path / "experiments.db"
+    run_dir = tmp_path / "runs" / "same"
+    run_id = completed_run(db, run_dir, "same")
+    summary = write_summary(run_dir, run_id)
+    store = make_store(db)
+    store.index_summary(run_id, summary)
+    changed = json.loads(summary.read_text())
+    changed["evidence_report"]["model_evaluation"]["model"]["auc"] = 0.99
+    summary.write_text(json.dumps(changed), encoding="utf-8")
+    with pytest.raises(ValueError, match="conflicting evaluation evidence"):
+        store.index_summary(run_id, summary)
+    assert store.show_run(run_id)["candidate_auc"] == pytest.approx(0.53)
+
+
+def test_existing_database_migration_creates_backup_before_schema_change(tmp_path):
+    db = tmp_path / "experiments.db"
+    ExperimentRegistry(db)
+    with sqlite3.connect(db) as conn:
+        conn.execute("CREATE TABLE candidates (candidate_id TEXT PRIMARY KEY, name TEXT, source_hash TEXT, parameters_json TEXT, created_at TEXT)")
+        conn.execute("INSERT INTO candidates VALUES ('legacy', 'old', 'hash', '{}', 'then')")
+    make_store(db)
+    backups = list(tmp_path.glob("experiments.db.backup-*"))
+    assert len(backups) == 1
+    with sqlite3.connect(backups[0]) as conn:
+        assert conn.execute("SELECT name FROM candidates WHERE candidate_id='legacy'").fetchone()[0] == "old"
+        assert "hypothesis" not in {row[1] for row in conn.execute("PRAGMA table_info(candidates)")}
+
+
 def test_indexes_signed_metrics_and_null_incremental_values(tmp_path):
     db = tmp_path / "experiments.db"
     inc_dir = tmp_path / "runs" / "incremental"
@@ -303,7 +325,7 @@ def test_list_runs_filters_candidate_and_status(tmp_path):
     ]
 
 
-def test_new_snapshot_enriches_legacy_candidate_manifest(tmp_path):
+def test_new_snapshot_does_not_rewrite_legacy_candidate_manifest(tmp_path):
     db = tmp_path / "experiments.db"
     old_dir = tmp_path / "runs" / "old"
     new_dir = tmp_path / "runs" / "new"
@@ -321,8 +343,10 @@ def test_new_snapshot_enriches_legacy_candidate_manifest(tmp_path):
 
     candidate = store.show_run(new_id)
     manifest = json.loads(candidate["manifest_json"])
-    assert manifest["required_columns"] == ["high", "low", "close"]
-    assert manifest["prediction_horizon"] == 4
+    assert manifest["required_columns"] is None
+    assert manifest["prediction_horizon"] is None
+    archived = json.loads((new_dir / "summary.json").read_text())
+    assert archived["candidate"]["required_columns"] == ["high", "low", "close"]
 
 
 def _set_candidate_auc(payload, value):

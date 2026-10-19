@@ -237,6 +237,21 @@ def test_finalize_applies_bh_and_combines_axes():
                                                        "x1.5", "x2.0"}
 
 
+def test_direction_a_overall_and_monthly_conflict_is_inconclusive():
+    result = _synthetic_result(
+        "A-1", auc_point=0.02, auc_p=0.0005,
+        auc_ci=(0.01, 0.03), boot_sd=0.001,
+        prereg_sign=+1, monthly_difference=0.02,
+        monthly_negative_ratio=0.1,
+    )
+    result["mechanism"]["point"] = -0.03
+    result["mechanism_evidence"]["observed_sign"] = -1
+    result["mechanism_evidence"]["monthly_observed_sign"] = 1
+    regime_cli.finalize([result], VerdictPolicy())
+    assert result["mechanism_verdict"]["label"] == "INCONCLUSIVE"
+    assert result["overall_verdict"]["label"] != "SUPPORTED"
+
+
 def test_run_config_end_to_end_smoke(monkeypatch):
     market = make_market(4000)
     monkeypatch.setattr(regime_cli, "TRAIN", ("2022-01-01", "2022-03-01"))
