@@ -58,3 +58,14 @@
 - 独立审查指出 7 项 Important：损坏产物复用、索引并发错绑、索引失败后复用绕过修复、旧表缺少 FK 等价约束、completed lookup/claim 竞态、坏指标终止 backfill、研究代码指纹覆盖不足。
 - 每项均新增失败回归测试并修复：复用校验两份快照 hash 与摘要结构；复用前确保索引；索引身份读取前 `BEGIN IMMEDIATE`；旧表增加非破坏性约束触发器；claim 在事务内侦测新 completed；backfill 隔离坏指标；代码版本纳入 momentum/factor report/IC/feedback/builder。
 - 修复后全量：`139 passed in 11.74s`。
+
+## Alpha Lab v1.0 施工前审计（2026-10-19）
+- 当前分支仍为 `my_dev`，HEAD 已前进到 `e7833285ef69264d8cf0a10168c011a92408c3c3`。
+- 工作树有 12 个 Alpha Lab 修改/新增文件；其中 `regime_cli.py` 已尝试为 A-1/A-2 拆分 run，`prereg_record.py` 已尝试按 analysis_id 去重 JSONL，统计 selfcheck 与 RankIC 也有未提交性能/安慰剂修订。它们均视为用户资产。
+- `ResearchStore` 已有 experiments/candidates/evaluations/research_decisions/statistical_reviews，但 statistical_reviews 当前 schema 未显式保存 analysis_id/config_id，必须继续审计 review_id 生成和冲突处理。
+- 当前 bootstrap 使用未中心化 bootstrap 分布两侧比例构造 p 值；用户要求通过零效应与时间依赖 Monte Carlo 验证校准，失败时升级方法版本或降级用途。
+- VerdictPolicy 已集中定义 ΔAUC=0.005、ΔLogLoss=0.0005、ΔBrier=0.00025；仍需追踪 regime 持久化是否硬编码 0.005。
+- 仓库虚拟环境可用，但 pytest 默认 addopts 依赖未安装的 pytest-xdist；基线需覆盖 addopts 后执行。
+- OpenCode 可执行文件位于 `/home/von/.nvm/versions/node/v20.20.2/bin/opencode`，首次版本查询因默认日志目录只读失败，需用临时 XDG 目录重试并检查真实配置解析。
+- OpenCode 实测为 v2.0.29；官方权限文档确认 `permission`、通配模式、last-match-wins、`task` 与 `external_directory` 语法。受限 Agent 已按默认拒绝加精确允许配置。
+- Bubblewrap 基础 user/PID/IPC/UTS 隔离可运行；当前托管环境创建 network namespace 失败。现有 candidate loader 仍在可信进程导入任意 Python，因此安全验收不通过，必须禁止无人值守候选执行并保持 RC 状态。

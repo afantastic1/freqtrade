@@ -172,3 +172,16 @@ def test_append_decisions_reads_back_valid_json(tmp_path: Path):
     raw = (tmp_path / "notes" / "unit.jsonl").read_text(encoding="utf-8")
     parsed = json.loads(raw.splitlines()[0])
     assert parsed["conclusion"]["nested"] == [1, 2, 3]
+
+
+def test_append_decisions_rejects_same_identity_with_changed_evidence(tmp_path: Path):
+    (tmp_path / "notes").mkdir()
+    prereg_record.append_decisions(
+        tmp_path, [{"analysis_id": "a", "conclusion": {"v": 1}}],
+        log_name="unit.jsonl",
+    )
+    with pytest.raises(ValueError, match="conflicting research decision"):
+        prereg_record.append_decisions(
+            tmp_path, [{"analysis_id": "a", "conclusion": {"v": 2}}],
+            log_name="unit.jsonl",
+        )

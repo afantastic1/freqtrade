@@ -678,6 +678,10 @@ def _review_row(result: dict, run_id: str, random_state: int, n_boot: int) -> di
     setting = result["setting"]
     return {
         "run_id": run_id,
+        # 身份键的一部分：与 research_store.statistical_review_id 对齐，
+        # 使"同一 run 下多个检验"也能各自幂等而不互相覆盖。
+        "analysis_id": f"prereg-b-{setting['id']}",
+        "config_id": setting["id"],
         "timeframe": setting["timeframe"],
         "horizon": setting["horizon"],
         "n": result["n"],

@@ -1,0 +1,16 @@
+name: Alpha Lab freeze
+on:
+  pull_request:
+    paths: ["alpha_lab/**", ".opencode/**", "docs/alpha_lab/**", ".github/workflows/alpha-lab-freeze.yml"]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.13"}
+      - run: pip install -e . -r requirements-dev.txt
+      - run: python -m compileall -q alpha_lab
+      - run: python -m alpha_lab.freeze
+      - run: python -m pytest -o addopts='' -q alpha_lab/tests/
+      - run: git diff --check

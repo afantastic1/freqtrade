@@ -19,3 +19,13 @@
 - Task 7 真实验收：先备份数据库；真实迁移/补录、历史查询、force 完整研究、默认复用、快照不变性与 SQLite FK 检查均已执行。验收中发现并用 RED→GREEN 修复 orphan 分类、CLI force 透传及候选 manifest 元数据升级。
 - 独立最终审查：7 项 Important 全部在单轮修复中完成 RED→GREEN；最终全量 139 passed，最终真实 run 为 `bd4260f5df084ca583d9b7f51c8e845e`，随后默认命令复用同一 run。
 - 最终 fresh 命令：`compileall` exit 0；全量 `139 passed in 11.15s`；`git diff --check` exit 0；真实数据库 experiments=8/candidates=3/evaluations=8，`foreign_key_check` 为空。
+
+## 2026-10-19 — Alpha Lab v1.0 修复与冻结
+- 启用并读取 using-superpowers、planning-with-files、brainstorming、writing-plans、systematic-debugging、TDD、executing-plans、verification-before-completion 与 finishing-a-development-branch 流程。
+- 完成初始 Git 审计：`my_dev` / `e7833285`，识别并保护 12 个未提交 Alpha Lab 文件。
+- 指定的 `python -m pytest` 因系统无 `python` 失败；改用 `.venv/bin/python` 后又发现项目 addopts 需要当前环境未安装的 pytest-xdist。下一步以 `-o addopts=''` 取得测试基线。
+- 开始读取 ResearchStore、ExperimentRegistry、Runner、Bootstrap 与 VerdictPolicy，确认需进一步追踪身份、冲突、复用与统计校准。
+- Commit A `770f27a19c`：统计身份冲突保护、A/B 独立落库、VerdictPolicy 阈值、方向冲突、中心化 bootstrap p 值、内容数据哈希及回归测试。
+- Commit A 前全量：259 passed；冻结校验 RED→GREEN：2 passed。
+- OpenCode v2.0.29 权限矩阵、协议 RC、CODEOWNERS/CI、冻结 manifest 与维护文档已建立。
+- 候选隔离验收因当前宿主无法创建 network namespace 且现有 loader 为进程内导入而判定失败；记录为发布阻塞，不宣称 v1.0 完成。

@@ -691,6 +691,8 @@ class ResearchStore:
         run_id = review.get("run_id")
         if not run_id:
             raise ValueError("review requires run_id")
+        if not review.get("analysis_id") or not review.get("config_id"):
+            raise ValueError("review requires analysis_id and config_id")
 
         metrics = review.get("metrics") or {}
         primary = review.get("primary_metric", "auc")
@@ -710,6 +712,7 @@ class ResearchStore:
         )
 
         with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
             existing = conn.execute(
                 "SELECT candidate_id, payload_json FROM statistical_reviews "
                 "WHERE review_id = ?", (review_id,)

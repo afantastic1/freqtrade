@@ -12,7 +12,7 @@ metadata:
 
 Complete **exactly one** independently traceable research iteration per invocation. Generate an economically motivated hypothesis, implement one candidate in the existing Alpha Lab contract, obtain the deterministic evidence, and record a Research Decision. Use Alpha Lab as a black-box research engine: **do not modify its metrics, validation, labeling, walk-forward, runner, research store, or candidate protocol to make a candidate pass**. Do not execute live trades or change Freqtrade trading configuration.
 
-The current supported experimental scope is **BTC/USDT:USDT**, timeframes **1h / 15m**, the existing OHLCV candidate input (`open`, `high`, `low`, `close`, `volume`) and only the research date range permitted by `alpha_lab/config.py`. No funding, OI, spot basis, or options inputs may be invented or loaded ad hoc into factor code. Labels and predictions are research proxies, not executable PnL.
+The current supported experimental scope is **BTC/USDT:USDT**, timeframes **5m / 15m / 1h / 4h**, the existing OHLCV candidate input (`open`, `high`, `low`, `close`, `volume`) and only the research date range permitted by `alpha_lab/config.py`. Treat 2022–2024 as repeatedly used development data and never call it fresh OOS. No funding, OI, spot basis, or options inputs may be invented or loaded ad hoc into factor code. Labels and predictions are research proxies, not executable PnL.
 
 ## Step 0 — preflight
 

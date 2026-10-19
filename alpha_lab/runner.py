@@ -25,6 +25,7 @@ from alpha_lab.validation.factor_validator import FactorValidator
 from alpha_lab.evaluation.incremental import evaluate_incremental
 from alpha_lab.evaluation.evidence import build_evidence_report
 from alpha_lab.research_store import ResearchStore
+from alpha_lab.version import ENGINE_VERSION, PROTOCOL_VERSION
 
 DATA_DIR = Path("user_data/data/binance")
 OUTPUT_ROOT = Path("user_data/research/alpha_lab/runs")
@@ -591,6 +592,8 @@ def run_experiment(config_path: str | Path,
         data_identity = _data_source_identity(config)
         code_version = _evaluation_code_version()
         raw["research_identity"] = {
+            "engine_version": ENGINE_VERSION,
+            "protocol_version": PROTOCOL_VERSION,
             "data": data_identity,
             "label_version": LABEL_VERSION,
             "evaluation_code_version": code_version,
@@ -674,6 +677,8 @@ def run_experiment(config_path: str | Path,
             execution_candidate_dir = snapshot.candidate_dir
             manifest = {
                 "manifest_version": 1,
+                "engine_version": ENGINE_VERSION,
+                "protocol_version": PROTOCOL_VERSION,
                 "run_id": run_id,
                 "config_hash": config_hash,
                 "config": raw,

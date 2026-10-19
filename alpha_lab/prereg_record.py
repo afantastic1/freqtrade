@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import fcntl
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -99,24 +100,36 @@ def append_decisions(
     path = Path(root) / "notes" / log_name
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    seen = set()
-    if dedupe_key and path.is_file():
-        for line in path.read_text(encoding="utf-8").splitlines():
-            if not line.strip():
-                continue
-            try:
-                existing = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            key = existing.get(dedupe_key)
-            if key is not None:
-                seen.add(key)
-
-    with path.open("a", encoding="utf-8") as handle:
+    with path.open("a+", encoding="utf-8") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        handle.seek(0)
+        seen = {}
+        if dedupe_key:
+            for line in handle:
+                if not line.strip():
+                    continue
+                try:
+                    existing = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                key = existing.get(dedupe_key)
+                if key is not None:
+                    comparable = {k: v for k, v in existing.items() if k != "recorded_at"}
+                    seen[key] = json.dumps(
+                        comparable, sort_keys=True, separators=(",", ":"),
+                        ensure_ascii=False, allow_nan=False,
+                    )
+        handle.seek(0, 2)
         for decision in decisions:
             key = decision.get(dedupe_key) if dedupe_key else None
+            canonical = json.dumps(
+                decision, sort_keys=True, separators=(",", ":"),
+                ensure_ascii=False, allow_nan=False,
+            )
             if key is not None and key in seen:
-                continue
+                if seen[key] == canonical:
+                    continue
+                raise ValueError(f"conflicting research decision identity: {key}")
             handle.write(
                 json.dumps(
                     {"recorded_at": _utc_now(), **decision},
@@ -127,7 +140,9 @@ def append_decisions(
                 + "\n"
             )
             if key is not None:
-                seen.add(key)
+                seen[key] = canonical
+        handle.flush()
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
     return path
 
 

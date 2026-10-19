@@ -513,7 +513,13 @@ def command_run(args) -> int:
                     candidate_id = entry["candidate_id"]
                     break
             store.record_statistical_review(
-                {**run, "primary_metric": "auc", "random_state": args.random_state},
+                {
+                    **run,
+                    "analysis_id": f"stats-audit-{run['run_id']}",
+                    "config_id": run["run_id"],
+                    "primary_metric": "auc",
+                    "random_state": args.random_state,
+                },
                 method_version=METHOD_VERSION,
                 candidate_id=candidate_id,
             )

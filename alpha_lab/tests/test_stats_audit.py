@@ -283,6 +283,8 @@ def test_audit_run_respects_block_below_horizon_skip(tmp_path):
 def _make_audit_payload(run_id="run-1"):
     return {
         "run_id": run_id,
+        "analysis_id": f"stats-audit-{run_id}",
+        "config_id": run_id,
         "timeframe": "1h",
         "horizon": 4,
         "n": 600,
