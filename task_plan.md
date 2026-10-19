@@ -32,6 +32,49 @@
 
 ---
 
+# Fundamental Data Adapter 施工计划（2026-10-19）
+
+# Data Engineering v0.1 收尾与 PIT 治理计划（2026-10-19）
+
+## 范围
+- [x] 1. 审计全部未跟踪文件、包配置、数据忽略规则、快照目录元数据与基础测试来源
+- [ ] 2. 评审 PIT 状态合同、sidecar schema、strict PIT 对 CONSERVATIVE 的适用规则
+- [ ] 3. 建立独立发行元数据、manifest/PIT schema、验证器和审计清单
+- [ ] 4. 补齐来源证据缺项审核表与 PIT 正/负向测试
+- [ ] 5. 从干净 Git 导出安装包并运行全部 Data Engineering 测试
+- [ ] 6. 只提交源码、schema、文档与测试；确认数据和历史记录未变更
+
+## 审计要点
+- v0.1 核心源码和核心测试目前均未跟踪；`data_engineering_starter` 与安装目录相同文件完全重复，保留 starter，不把重复副本作为运行源码。
+- 根 setuptools package finder 排除 `data_engineering*`；需要 standalone `data_engineering/pyproject.toml`，并让干净 checkout 能安装轻量 DE 包。
+- `.gitignore` 已排除 `user_data/*`、SQLite、Python 和 pytest 缓存；本次保留所有工作区数据原样。
+- Catalog 和 PIT 目前无正式 JSON Schema；现有 sidecar 为弱松散合同，需要 schema/version/state/evidence/revision/time semantics。
+- 现有快照仍无历史发布时间与历史修订证明，必须维持 UNVERIFIED；用 2026 ingest/retrieval time 不能反推历史 available_at。
+
+---
+
+## 目标
+在 `codex/fundamental-data-adapter` 单独实现只读 Catalog Adapter、严格 PIT as-of join 与 Alpha Lab feature bridge，不碰原始快照、Research SQLite、交易数据通路或 Alpha Lab 冻结评价模块。
+
+## 阶段
+- [x] 1. 审查当前分支、Data Engineering Catalog、PIT 覆盖和 MarketPanel/Dataset 接口
+- [x] 2. 编写并经用户确认架构设计；设计提交 `b78b156fca`
+- [x] 3. 编写实施计划并自审
+- [x] 4. 用户复核实施计划
+- [x] 5. 以 RED→GREEN 实现注册表、Adapter、严格 as-of join 和 feature bridge
+- [x] 6. 文档、全量测试、冻结/交易路径差异检查与独立提交（`0982c1f8c4`）
+- Ruling: 仅新增 adapter 说明文档，不修改已存在的未跟踪 `docs/data_engineering.md`，避免提交时新追踪整份 v0.1 用户基础文件。
+- Ruling: PIT 认证使用内容寻址 sidecar，保持 Catalog manifest 和历史 snapshot 不变；同一 dataset_id 的多个版本不可在一次 read_many 中混用。
+
+## 约束
+- 数据范围固定为 `[2022-01-01, 2025-01-01)` UTC。
+- 当前基本面全部 PIT-unverified；strict_pit 当前必须拒绝。
+- available_time 只能来自实际数据，缺失保留空值。
+- 14 个快照、历史数据库和 Freqtrade OHLCV/Funding/OI 路径只读且不变。
+- 新代码与本任务测试独立提交；已有未跟踪 Data Engineering v0.1 文件不得被带入提交。
+
+---
+
 # Alpha Lab v1.0 修复与冻结计划（2026-10-19）
 
 ## 目标

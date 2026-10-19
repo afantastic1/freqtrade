@@ -83,3 +83,20 @@
 - 本轮测试使用合成数据完成，无读取行情 Feather，因此没有触及 2025+。本地可见 BTC 与 ETH 两个标的，不够构造 `min_assets=5` 的有效横截面；真实 CS 历史烟雾被数据与安全日期边界阻塞。
 - CS Bootstrap Monte Carlo 当前改为多种 label persistence、prediction AR 相关及变化方差结构；其结果必须先完成后写入结论。协议把 CS 结果限定为 diagnostic 状态，不生成 SUPPORTED/REJECTED。
 - `alpha_lab.freeze` 仍针对 v1.0 基线，因此现有 Maintainer 修复和新模块会被报告为 changed/untracked。冻结清单需在安全与数据验收之后生成新的版本基线，当前不得更新旧 manifest 来暗示完成。
+
+## Fundamental Data Adapter 审计（2026-10-19）
+- 当前分支 `codex/fundamental-data-adapter`，设计文档已由用户确认并提交 `b78b156fca`；工作区中的 `data_engineering/`、starter、文档和测试是已有未跟踪基础，必须避免误加入提交。
+- 只读 coverage audit 实测 14 manifests、30 series、14/14 expected datasets、0 errors；所有序列 `unverified`。XRP `chain_tvl_usd` 从 2024-03-23 开始。SOL/BNB 的指标集合不同于 BTC/ETH/XRP。
+- Catalog `verify(root,dataset_id,digest)` 校验 CSV 哈希、字节数、schema 和 manifest quality；`validate_fundamental` 接受额外列但只将 `published_at` 评为 `declared_not_audited`，不独立验证发布时间。
+- 基本面 CSV 已包含 `asset_id, metric, event_time, value`，`published_at` 可选；Coin Metrics token alias 是 btc/eth/sol/bnb/xrp，DefiLlama alias 是 `chain:Bitcoin/Ethereum/Solana/BSC/XRPL`。
+- `MarketPanel` 已有 UTC `(open_time,symbol)` MultiIndex 与每行 `available_time`；`CrossSectionalDataset` 接受与该索引对齐的 `features: dict[str, pd.Series]`。当前 Alpha Lab runner 不消费外部因子，桥接限于产生此既有 Dataset 输入，不修改 runner/evaluator。
+- PIT 实施注意：不能只信任未经审计的 `published_at`。为保持 manifest 不变，strict PIT 通过内容寻址的追加式 sidecar 认证；sidecar 绑定 reviewer、audit reference、snapshot SHA 和 availability 列。当前快照没有 attestation，因此 strict_pit 必须失败关闭。
+
+## Data Engineering v0.1 收尾与 PIT 治理审计（2026-10-19）
+- 当前分支是 `codex/fundamental-data-adapter`，HEAD `0982c1f8c4`。v0.1 基础包、README/安装脚本、原始测试、指南原先均为未跟踪文件；adapter 已提交的模块依赖这些基础模块。
+- `data_engineering_starter/data_engineering/{__init__,__main__,catalog,defillama}.py` 与已安装 `data_engineering/` 四文件逐字节相同；starter 的 `tests/test_data_engineering.py` 与工作区测试也相同。starter 是复制式 bootstrap；版本控制主包和独立安装元数据比继续追踪重复源更清晰。不得删除现有 starter 目录。
+- 根 `pyproject.toml` 的 setuptools include 仅 `freqtrade*`；现有 Data Engineering 未被 wheel 安装。审计建议在 `data_engineering/pyproject.toml` 建立轻量独立发行包，只依赖 pandas，安装入口提供 `data-engineering` CLI；Alpha Lab bridge 仅在完整 Freqtrade checkout 中使用。
+- `.gitignore` 的 `user_data/*` 已排除快照、raw、processed、reports、数据库和市场数据；通用规则也排除 `__pycache__`、pytest cache 和 sqlite。当前可见 fundamental 数据文件全在 `user_data/data_engineering/`，但本轮不打开内容、不改名、不提交。
+- Data Engineering 目前没有 manifest JSON Schema 或 PIT sidecar schema；Catalog manifest 只在代码动态构造。需要新增版本化 Catalog Manifest Schema 与 `pit-evidence-v1` JSON Schema，并以验证函数校验实际 snapshot/schema/证据绑定。
+- PIT 状态建议：VERIFIED 要求逐序列/逐行可追溯原始发布证据及修订身份；CONSERVATIVE 只可依有文档证明的可用时间上界作为最晚可用时刻；UNVERIFIED 表示材料不足；REJECTED 表示冲突、错配或时间越界。strict PIT 仅接收通过校验的 VERIFIED/CONSERVATIVE，以 conservative bound 参与 join；其余 fail-closed。
+- 现有 14 个快照的历史发布时间、逐行修订 ID、原始历史版本证据均缺失或未经核验；不能因 2026 年采集/入库时间推断 2022–2024 当时可用，也不据此升级状态。审核清单应按来源、数据集和指标列出缺失证据，并全部保持 UNVERIFIED。

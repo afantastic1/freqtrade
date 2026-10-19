@@ -1,5 +1,14 @@
 # Alpha Lab 施工进度
 
+## 2026-10-19 — Fundamental Data Adapter
+- 用户要求从 Data Engineering v0.1 Catalog 接入只读基本面数据，并明确确认架构设计；当前工作在 `codex/fundamental-data-adapter`。
+- 使用 `superpowers:brainstorming` 完成并提交设计（`b78b156fca`），正在遵循 `writing-plans` 与 TDD 流程。
+- 初步审计：Catalog 14/14 snapshots，30 series，0 errors，均 PIT-unverified；Adapter 不能伪造 available_time，严格 join 必须基于 audited availability timestamp。
+- 当前接口：MarketPanel 的决策时间 `available_time`；CrossSectionalDataset 接受 MultiIndex 对齐的 feature Series，无需改评价模块。
+- 完成：注册表、只读适配器、追加式 PIT sidecar 校验、`read_many`、as-of join 和 Alpha Lab Dataset 输入桥接已实现并提交 `0982c1f8c4`。
+- 验收：Adapter/Registry/coverage 与 MarketPanel/Dataset 集成测试 56 passed；Alpha Lab 全套 297 passed；compileall、diff check 通过；只读审计 14/14 snapshots、30 series、0 errors。
+- 限制：所有既有历史基本面仍 PIT-unverified；strict_pit 对现有快照全部拒绝。Data Engineering v0.1 核心是用户已有的未跟踪基础文件，不包含在 adapter commit 中，干净 checkout 需要先独立安装/版本化该前置包。
+
 ## 2026-10-18
 - 读取 `docs/work.md`，确认范围覆盖 CLI、Runner、快照、研究索引、历史补录、去重、解释质量与五道验收 Gate。
 - 读取并启用 `using-superpowers`、`brainstorming`、`writing-plans`、`planning-with-files`。
