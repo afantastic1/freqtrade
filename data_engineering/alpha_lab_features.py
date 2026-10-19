@@ -50,7 +50,7 @@ def build_fundamental_features(
         values.attrs.update({
             "asset_registry_version": asset_registry.version,
             "metric_registry_version": metric_registry.version,
-            "pit_status": "verified" if not used.empty else "not_evaluable",
+            "pit_status": "VERIFIED" if not used.empty else "NOT_EVALUABLE",
             "dataset_ids": sorted(provenance.dataset_id.dropna().astype(str).unique()),
             "snapshot_sha256": sorted(provenance.snapshot_sha256.dropna().astype(str).unique()),
             "sources": sorted(provenance.source.dropna().astype(str).unique()),

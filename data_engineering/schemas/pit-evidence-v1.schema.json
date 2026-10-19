@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://freqtrade.local/schemas/pit-evidence-v1.schema.json",
+  "title": "Point-in-Time Evidence Sidecar v1",
+  "type": "object",
+  "required": ["schema_version", "dataset_id", "snapshot_sha256", "source", "ingested_at", "status", "review", "records"],
+  "properties": {
+    "schema_version": {"const": "pit-evidence-v1"},
+    "dataset_id": {"type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$"},
+    "snapshot_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "source": {"type": "string", "minLength": 1},
+    "ingested_at": {"type": "string", "format": "date-time"},
+    "status": {"enum": ["VERIFIED", "CONSERVATIVE", "UNVERIFIED", "REJECTED"]},
+    "reason": {"type": "string", "minLength": 1},
+    "review": {
+      "type": "object", "required": ["reviewer", "audit_reference", "reviewed_at"],
+      "properties": {
+        "reviewer": {"type": "string", "minLength": 1},
+        "audit_reference": {"type": "string", "minLength": 1},
+        "reviewed_at": {"type": "string", "format": "date-time"}
+      },
+      "additionalProperties": false
+    },
+    "evidence": {
+      "type": "array", "items": {"$ref": "#/$defs/evidence"},
+      "uniqueItems": true
+    },
+    "records": {
+      "type": "array", "minItems": 1, "items": {"$ref": "#/$defs/record"}
+    }
+  },
+  "allOf": [
+    {"if": {"properties": {"status": {"enum": ["UNVERIFIED", "REJECTED"]}}, "required": ["status"]}, "then": {"required": ["reason"]}}
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "evidence": {
+      "type": "object", "required": ["sha256", "source_uri", "media_type"],
+      "properties": {
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "source_uri": {"type": "string", "minLength": 1},
+        "media_type": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "record": {
+      "type": "object",
+      "required": ["source_asset_id", "metric", "event_time", "revision_id", "status", "availability_basis", "evidence_sha256s"],
+      "properties": {
+        "source_asset_id": {"type": "string", "minLength": 1},
+        "metric": {"type": "string", "minLength": 1},
+        "event_time": {"type": "string", "format": "date-time"},
+        "revision_id": {"type": ["string", "null"]},
+        "status": {"enum": ["VERIFIED", "CONSERVATIVE", "UNVERIFIED", "REJECTED"]},
+        "availability_basis": {"enum": ["source_release_record", "archived_source_vintage", "audited_upper_bound", "unknown"]},
+        "available_at": {"type": "string", "format": "date-time"},
+        "available_at_upper_bound": {"type": "string", "format": "date-time"},
+        "evidence_sha256s": {"type": "array", "items": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "uniqueItems": true},
+        "reason": {"type": "string"}
+      },
+      "additionalProperties": false,
+      "allOf": [
+    {"if": {"properties": {"status": {"enum": ["UNVERIFIED", "REJECTED"]}}, "required": ["status"]}, "then": {"required": ["reason"]}},
+        {"if": {"properties": {"status": {"const": "VERIFIED"}}, "required": ["status"]}, "then": {"required": ["available_at"]}},
+        {"if": {"properties": {"status": {"const": "CONSERVATIVE"}}, "required": ["status"]}, "then": {"required": ["available_at_upper_bound"]}}
+      ]
+    }
+  }
+}

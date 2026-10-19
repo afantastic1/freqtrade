@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "alpha-lab-data-engineering"
+version = "0.1.0"
+description = "Offline-first immutable data catalog and PIT evidence adapter for Alpha Lab"
+requires-python = ">=3.11"
+dependencies = ["pandas>=2.2,<4", "jsonschema>=4.18"]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[project.scripts]
+data-engineering = "data_engineering.__main__:main"
+
+[tool.setuptools]
+packages = ["data_engineering"]
+package-dir = {"data_engineering" = "."}
+include-package-data = true
+
+[tool.setuptools.package-data]
+data_engineering = ["schemas/*.json"]

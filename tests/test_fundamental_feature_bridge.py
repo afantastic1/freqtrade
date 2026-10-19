@@ -29,9 +29,12 @@ def _record(asset_id, tradable, scope, metric, value, available, source):
     return {
         "asset_id": asset_id, "tradable_asset_id": tradable,
         "entity_scope": scope, "metric": metric,
-        "event_time": "2024-03-18T00:00:00Z", "available_time": available,
+        "event_time": "2024-03-18T00:00:00Z", "available_at": available,
+        "available_at_upper_bound": pd.NaT, "available_time": available,
+        "ingested_at": "2024-12-31T00:00:00Z", "revision_id": "fixture-v1",
+        "evidence_sha256s": ["c" * 64],
         "value": value, "source": source, "dataset_id": "dataset-v1",
-        "snapshot_sha256": "b" * 64, "pit_status": "verified",
+        "snapshot_sha256": "b" * 64, "pit_status": "VERIFIED",
     }
 
 
@@ -55,7 +58,8 @@ def _observations():
     ))
     frame = pd.DataFrame(records, columns=OUTPUT_COLUMNS)
     frame["event_time"] = pd.to_datetime(frame.event_time, utc=True)
-    frame["available_time"] = pd.to_datetime(frame.available_time, utc=True)
+    for column in ("available_at", "available_time", "ingested_at"):
+        frame[column] = pd.to_datetime(frame[column], utc=True)
     frame.attrs.update(access_mode="strict_pit", _strict_pit_read_token=_STRICT_PIT_READ_TOKEN)
     frame.attrs["_strict_pit_read_fingerprint"] = _frame_fingerprint(frame)
     return frame
@@ -101,7 +105,7 @@ def test_feature_series_are_accepted_by_existing_cross_sectional_dataset():
     result = dataset.frame(target="raw_return")
     assert "fundamental__token__CapMrktEstUSD" in result
     assert len(result) == 3
-    assert features["fundamental__token__CapMrktEstUSD"].attrs["pit_status"] == "verified"
+    assert features["fundamental__token__CapMrktEstUSD"].attrs["pit_status"] == "VERIFIED"
 
 
 def test_duplicate_or_unknown_feature_metric_fails_closed():
@@ -129,7 +133,7 @@ def test_registered_but_unavailable_metric_returns_null_with_explicit_status():
     series = features["fundamental__ecosystem__chain_tvl_usd"]
 
     assert series.isna().all()
-    assert series.attrs["pit_status"] == "not_evaluable"
+    assert series.attrs["pit_status"] == "NOT_EVALUABLE"
     assert series.attrs["snapshot_pins"] == [("searched_dataset", "c" * 64)]
     assert series.attrs["pit_attestation_sha256"] == ["d" * 64]
     with pytest.raises(ValueError, match="max_age"):
@@ -143,6 +147,14 @@ def test_end_to_end_attested_catalog_read_asof_and_dataset(tmp_path):
     sidecars = catalog_root / "pit_attestations"
     sidecars.mkdir(parents=True)
     manifests = []
+    evidence_dir = catalog_root / "pit_evidence"
+    evidence_dir.mkdir(parents=True)
+    evidence_bytes = json.dumps({
+        "kind": "source_release_record", "revision_id": "rel-v1",
+        "available_at": "2024-03-19T02:00:00Z",
+    }).encode()
+    evidence_hash = hashlib.sha256(evidence_bytes).hexdigest()
+    (evidence_dir / evidence_hash).write_bytes(evidence_bytes)
     for ticker, value in (("btc", 123), ("eth", 234), ("sol", 345),
                           ("bnb", 456), ("xrp", 567)):
         dataset_id = f"coinmetrics_{ticker}_dev_v1"
@@ -155,10 +167,20 @@ def test_end_to_end_attested_catalog_read_asof_and_dataset(tmp_path):
         manifest = publish(catalog_root, dataset_id=dataset_id,
                            kind="fundamental", source="coinmetrics-community",
                            input_path=source)
-        evidence = {"dataset_id": manifest["dataset_id"],
-                    "snapshot_sha256": manifest["sha256"], "status": "verified",
-                    "reviewer": "steward", "audit_reference": f"audit-{ticker}",
-                    "availability_column": "available_time"}
+        evidence = {
+            "schema_version": "pit-evidence-v1", "dataset_id": manifest["dataset_id"],
+            "snapshot_sha256": manifest["sha256"], "source": manifest["source"],
+            "ingested_at": manifest["ingested_at"], "status": "VERIFIED",
+            "review": {"reviewer": "steward", "audit_reference": f"audit-{ticker}",
+                       "reviewed_at": "2026-10-19T00:00:00Z"},
+            "evidence": [{"sha256": evidence_hash, "source_uri": "https://source/release",
+                          "media_type": "application/json"}],
+            "records": [{"source_asset_id": ticker, "metric": "CapMrktEstUSD",
+                         "event_time": "2024-03-19T00:00:00Z", "revision_id": "rel-v1",
+                         "status": "VERIFIED", "availability_basis": "source_release_record",
+                         "available_at": "2024-03-19T02:00:00Z",
+                         "evidence_sha256s": [evidence_hash]}],
+        }
         payload = (json.dumps(evidence, sort_keys=True) + "\n").encode()
         digest = hashlib.sha256(payload).hexdigest()
         (sidecars / f"{digest}.json").write_bytes(payload)
@@ -180,7 +202,7 @@ def test_end_to_end_attested_catalog_read_asof_and_dataset(tmp_path):
     for symbol, value in expected.items():
         mask = symbols == symbol
         assert feature["fundamental__token__CapMrktEstUSD"].loc[panel.frame.index[mask]].eq(value).all()
-    assert feature["fundamental__token__CapMrktEstUSD"].attrs["pit_status"] == "verified"
+    assert feature["fundamental__token__CapMrktEstUSD"].attrs["pit_status"] == "VERIFIED"
     assert len(observations.attrs["snapshot_pins"]) == 5
     assert len(observations.attrs["pit_attestation_sha256"]) == 5
 

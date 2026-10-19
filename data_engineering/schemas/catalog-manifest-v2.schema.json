@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://freqtrade.local/schemas/catalog-manifest-v2.schema.json",
+  "title": "Data Catalog Manifest v2",
+  "type": "object",
+  "required": ["schema_version", "dataset_id", "kind", "source", "source_reference", "access_class", "sha256", "bytes", "quality", "ingested_at", "research_safe", "note"],
+  "properties": {
+    "schema_version": {"const": "data-catalog-v2"},
+    "dataset_id": {"type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$"},
+    "kind": {"enum": ["market", "fundamental"]},
+    "source": {"type": "string", "minLength": 1},
+    "source_reference": {"type": "string"},
+    "access_class": {"const": "EXPLORATORY_2022_2024"},
+    "sha256": {"$ref": "#/$defs/sha256"},
+    "bytes": {"type": "integer", "minimum": 1},
+    "quality": {"$ref": "#/$defs/quality"},
+    "ingested_at": {"type": "string", "format": "date-time"},
+    "research_safe": {"type": "boolean"},
+    "note": {"type": "string"}
+  },
+  "allOf": [
+    {"if": {"properties": {"kind": {"const": "market"}}}, "then": {"properties": {"quality": {"required": ["timeframe"]}}}},
+    {"if": {"properties": {"kind": {"const": "fundamental"}}}, "then": {"properties": {"quality": {"not": {"required": ["timeframe"]}}}}}
+  ],
+  "additionalProperties": true,
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "quality": {
+      "type": "object", "required": ["rows"],
+      "properties": {
+        "rows": {"type": "integer", "minimum": 1},
+        "timeframe": {"type": "string"},
+        "symbols": {"type": "object"},
+        "metrics": {"type": "array", "items": {"type": "string"}},
+        "publication_unknown_rows": {"type": "integer", "minimum": 0},
+        "point_in_time": {"enum": ["unverified", "declared_not_audited"]}
+      },
+      "additionalProperties": true
+    }
+  }
+}

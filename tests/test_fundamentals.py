@@ -41,6 +41,41 @@ def _publish(tmp_path, *, dataset_id="coinmetrics_btc_dev_v1", rows=None,
     return tmp_path / "catalog", manifest
 
 
+def _attest(root, manifest, rows, *, status="VERIFIED", availability="2024-01-02T03:00:00Z"):
+    evidence_bytes = json.dumps({
+        "kind": "source_release_record", "revision_id": "release-v1",
+        "available_at": availability,
+    }).encode()
+    evidence_hash = hashlib.sha256(evidence_bytes).hexdigest()
+    evidence_root = root / "pit_evidence"
+    evidence_root.mkdir(exist_ok=True)
+    (evidence_root / evidence_hash).write_bytes(evidence_bytes)
+    records = []
+    for row in rows:
+        records.append({
+            "source_asset_id": row["asset_id"], "metric": row["metric"],
+            "event_time": row["event_time"], "revision_id": "release-v1",
+            "status": status, "availability_basis": "source_release_record",
+            "available_at": availability, "evidence_sha256s": [evidence_hash],
+        })
+    sidecar = {
+        "schema_version": "pit-evidence-v1", "dataset_id": manifest["dataset_id"],
+        "snapshot_sha256": manifest["sha256"], "source": manifest["source"],
+        "ingested_at": manifest["ingested_at"], "status": status,
+        "review": {"reviewer": "steward", "audit_reference": "audit-1",
+                   "reviewed_at": "2026-10-19T00:00:00Z"},
+        "evidence": [{"sha256": evidence_hash, "source_uri": "https://source/release",
+                      "media_type": "application/json"}],
+        "records": records,
+    }
+    payload = (json.dumps(sidecar, sort_keys=True) + "\n").encode()
+    digest = hashlib.sha256(payload).hexdigest()
+    target = root / "pit_attestations"
+    target.mkdir(exist_ok=True)
+    (target / f"{digest}.json").write_bytes(payload)
+    return digest
+
+
 def test_exploratory_read_is_normalized_and_keeps_unknown_availability_null(tmp_path):
     root, manifest = _publish(tmp_path)
     adapter = FundamentalDataAdapter(root)
@@ -50,13 +85,14 @@ def test_exploratory_read_is_normalized_and_keeps_unknown_availability_null(tmp_
 
     assert list(result.columns) == [
         "asset_id", "tradable_asset_id", "entity_scope", "metric",
-        "event_time", "available_time", "value", "source", "dataset_id",
-        "snapshot_sha256", "pit_status",
+        "event_time", "available_at", "available_at_upper_bound", "available_time",
+        "ingested_at", "revision_id", "evidence_sha256s", "value", "source",
+        "dataset_id", "snapshot_sha256", "pit_status",
     ]
     assert result.asset_id.tolist() == ["token:BTC", "token:BTC"]
     assert result.tradable_asset_id.tolist() == ["BTC", "BTC"]
     assert result.available_time.isna().all()
-    assert result.pit_status.tolist() == ["unverified", "unverified"]
+    assert result.pit_status.tolist() == ["UNVERIFIED", "UNVERIFIED"]
     assert result.snapshot_sha256.eq(manifest["sha256"]).all()
     assert result.attrs["asset_registry_version"] == "asset-registry-v1"
     assert result.attrs["metric_registry_version"] == "metric-registry-v1"
@@ -74,9 +110,9 @@ def test_declared_publication_timestamp_remains_unverified(tmp_path):
         manifest["dataset_id"], manifest["sha256"], access="exploratory"
     )
 
-    assert result.available_time.iloc[0] == pd.Timestamp("2024-01-02T03:00:00Z")
-    assert result.pit_status.iloc[0] == "declared_not_audited"
-    with pytest.raises(ValueError, match="PIT-unverified"):
+    assert pd.isna(result.available_time.iloc[0])
+    assert result.pit_status.iloc[0] == "UNVERIFIED"
+    with pytest.raises(ValueError, match="strict_pit rejects PIT-unverified"):
         FundamentalDataAdapter(root).read(
             manifest["dataset_id"], manifest["sha256"], access="strict_pit"
         )
@@ -91,8 +127,8 @@ def test_published_at_fills_null_available_time_without_fabrication(tmp_path):
         manifest["dataset_id"], manifest["sha256"], access="exploratory"
     )
 
-    assert result.available_time.iloc[0] == pd.Timestamp("2024-01-02T03:00:00Z")
-    assert result.pit_status.iloc[0] == "declared_not_audited"
+    assert pd.isna(result.available_time.iloc[0])
+    assert result.pit_status.iloc[0] == "UNVERIFIED"
 
 
 def test_adapter_assigns_network_metrics_to_chain_entities(tmp_path):
@@ -110,7 +146,7 @@ def test_adapter_assigns_network_metrics_to_chain_entities(tmp_path):
     assert result.tradable_asset_id.tolist() == ["BTC"]
 
 
-def test_strict_pit_accepts_only_attested_actual_availability_time(tmp_path):
+def test_strict_pit_accepts_only_evidence_bound_actual_availability_time(tmp_path):
     row = _row("2024-01-01")
     row["available_time"] = "2024-01-02T03:00:00Z"
     source_path = _source(tmp_path, [row], name="with-availability.csv")
@@ -118,24 +154,13 @@ def test_strict_pit_accepts_only_attested_actual_availability_time(tmp_path):
     manifest = publish(root, dataset_id="coinmetrics_btc_dev_v1",
                        kind="fundamental", source="coinmetrics-community",
                        input_path=source_path)
-    evidence = {"dataset_id": manifest["dataset_id"],
-                "snapshot_sha256": manifest["sha256"],
-                "status": "verified", "reviewer": "data-steward",
-                "audit_reference": "audit-2024-001",
-                "availability_column": "available_time_or_published_at"}
-    evidence_bytes = (json.dumps(evidence, sort_keys=True) + "\n").encode()
-    evidence_hash = hashlib.sha256(evidence_bytes).hexdigest()
-    evidence_dir = root / "pit_attestations"
-    evidence_dir.mkdir()
-    (evidence_dir / f"{evidence_hash}.json").write_bytes(evidence_bytes)
-    # A content-addressed sidecar is append-only; snapshot and manifest stay intact.
-    assert evidence_bytes == (evidence_dir / f"{evidence_hash}.json").read_bytes()
+    evidence_hash = _attest(root, manifest, [row])
 
     result = FundamentalDataAdapter(root).read(
         manifest["dataset_id"], manifest["sha256"], access="strict_pit"
     )
 
-    assert result.pit_status.tolist() == ["verified"]
+    assert result.pit_status.tolist() == ["VERIFIED"]
     assert result.available_time.iloc[0] == pd.Timestamp("2024-01-02T03:00:00Z")
     assert result.attrs["pit_attestation_sha256"] == evidence_hash
     assert result.attrs["_strict_pit_read_token"] is not None
@@ -148,22 +173,15 @@ def test_attestation_checksum_and_snapshot_binding_fail_closed(tmp_path):
     root = tmp_path / "catalog"
     manifest = publish(root, dataset_id="coinmetrics_btc_dev_v1", kind="fundamental",
                        source="coinmetrics-community", input_path=source_path)
-    attestation = {"dataset_id": manifest["dataset_id"],
-                   "snapshot_sha256": manifest["sha256"], "status": "verified",
-                   "reviewer": "steward", "audit_reference": "audit-1",
-                   "availability_column": "available_time_or_published_at"}
-    payload = (json.dumps(attestation, sort_keys=True) + "\n").encode()
-    digest = hashlib.sha256(payload).hexdigest()
-    directory = root / "pit_attestations"
-    directory.mkdir()
-    path = directory / f"{digest}.json"
-    path.write_bytes(payload)
+    digest = _attest(root, manifest, [row])
+    path = root / "pit_attestations" / f"{digest}.json"
     adapter = FundamentalDataAdapter(root)
     # Valid sidecar passes; changing bytes without changing its address is rejected.
     assert adapter.read(manifest["dataset_id"], manifest["sha256"],
-                        access="strict_pit").pit_status.iloc[0] == "verified"
-    path.write_bytes(payload + b" ")
-    with pytest.raises(ValueError, match="PIT-unverified"):
+                        access="strict_pit").pit_status.iloc[0] == "VERIFIED"
+    original = path.read_bytes()
+    path.write_bytes(original + b" ")
+    with pytest.raises(ValueError, match="sidecar SHA-256 mismatch"):
         adapter.read(manifest["dataset_id"], manifest["sha256"], access="strict_pit")
 
 
@@ -197,27 +215,20 @@ def test_read_many_rejects_multiple_versions_of_one_dataset(tmp_path):
         )
 
 
-def test_read_rejects_publication_times_outside_development_window(tmp_path):
-    root, manifest = _publish(
-        tmp_path,
-        rows=[_row("2024-12-31", published_at="2025-01-02T00:00:00Z")],
-    )
-
-    with pytest.raises(ValueError, match="availability time outside development window"):
-        FundamentalDataAdapter(root).read(
-            manifest["dataset_id"], manifest["sha256"], access="exploratory"
-        )
+def test_unverified_source_publication_timestamp_does_not_enter_availability(tmp_path):
+    root, manifest = _publish(tmp_path, rows=[_row("2024-12-31", published_at="2025-01-02T00:00:00Z")])
+    result = FundamentalDataAdapter(root).read(manifest["dataset_id"], manifest["sha256"], access="exploratory")
+    assert result.available_time.isna().all()
+    assert result.pit_status.eq("UNVERIFIED").all()
 
 
-def test_read_rejects_available_time_before_event_time(tmp_path):
+def test_unverified_available_time_before_event_time_is_not_trusted(tmp_path):
     row = _row("2024-01-02")
     row["available_time"] = "2024-01-01T23:59:00Z"
     root, manifest = _publish(tmp_path, rows=[row])
 
-    with pytest.raises(ValueError, match="precedes event time"):
-        FundamentalDataAdapter(root).read(
-            manifest["dataset_id"], manifest["sha256"], access="exploratory"
-        )
+    result = FundamentalDataAdapter(root).read(manifest["dataset_id"], manifest["sha256"], access="exploratory")
+    assert result.available_time.isna().all()
 
 
 @pytest.mark.parametrize(

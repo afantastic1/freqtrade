@@ -13,6 +13,7 @@ from typing import Literal, Sequence
 import pandas as pd
 
 from .catalog import END, START, verify
+from .pit import PITRecord, validate_pit_sidecar
 from .registries import AssetRegistry, MetricRegistry
 
 _STRICT_PIT_READ_TOKEN = object()
@@ -31,16 +32,21 @@ def _validated_max_age(max_age: str) -> pd.Timedelta:
 
 OUTPUT_COLUMNS = [
     "asset_id", "tradable_asset_id", "entity_scope", "metric", "event_time",
-    "available_time", "value", "source", "dataset_id", "snapshot_sha256",
-    "pit_status",
+    "available_at", "available_at_upper_bound", "available_time", "ingested_at",
+    "revision_id", "evidence_sha256s", "value", "source", "dataset_id",
+    "snapshot_sha256", "pit_status",
 ]
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
 def _frame_fingerprint(frame: pd.DataFrame) -> str:
     canonical = frame[OUTPUT_COLUMNS].copy()
-    canonical["event_time"] = pd.to_datetime(canonical.event_time, utc=True)
-    canonical["available_time"] = pd.to_datetime(canonical.available_time, utc=True)
+    for column in ("event_time", "available_at", "available_at_upper_bound",
+                   "available_time", "ingested_at"):
+        canonical[column] = pd.to_datetime(canonical[column], utc=True)
+    canonical["evidence_sha256s"] = canonical.evidence_sha256s.map(
+        lambda value: json.dumps(value, sort_keys=True)
+    )
     digest = hashlib.sha256()
     digest.update(pd.util.hash_pandas_object(canonical, index=False).values.tobytes())
     provenance = {
@@ -183,13 +189,10 @@ class FundamentalDataAdapter:
             raise ValueError(f"{column} must include a timezone at row {row_number}")
         return timestamp.tz_convert("UTC")
 
-    def _attestation_status(
-        self, manifest: dict, frame: pd.DataFrame,
-        availability_column: str | None,
-    ) -> tuple[str, str | None]:
+    def _pit_records(self, manifest: dict, frame: pd.DataFrame):
         attestation_dir = self._safe_path(self.root / "pit_attestations")
         if not attestation_dir.is_dir():
-            return manifest["quality"].get("point_in_time", "unverified"), None
+            return {}, None
         matches = []
         for evidence_path in sorted(attestation_dir.glob("*.json")):
             self._safe_path(evidence_path)
@@ -198,6 +201,14 @@ class FundamentalDataAdapter:
                 continue
             evidence_bytes = evidence_path.read_bytes()
             if hashlib.sha256(evidence_bytes).hexdigest() != evidence_digest:
+                # A broken content-addressed file cannot silently provide evidence.
+                try:
+                    candidate = json.loads(evidence_bytes)
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    continue
+                if (candidate.get("dataset_id") == manifest["dataset_id"]
+                        and candidate.get("snapshot_sha256") == manifest["sha256"]):
+                    raise ValueError("PIT sidecar SHA-256 mismatch")
                 continue
             try:
                 evidence = json.loads(evidence_bytes)
@@ -207,23 +218,24 @@ class FundamentalDataAdapter:
                     and evidence.get("snapshot_sha256") == manifest["sha256"]):
                 matches.append((evidence_digest, evidence))
         if not matches:
-            return manifest["quality"].get("point_in_time", "unverified"), None
+            return {}, None
         if len(matches) != 1:
             raise ValueError("multiple PIT attestations match the same snapshot")
-        evidence_digest, evidence = matches[0]
-        required = {"reviewer", "audit_reference"}
-        if required - set(evidence):
-            raise ValueError("invalid PIT attestation evidence fields")
-        if not evidence["reviewer"] or not evidence["audit_reference"]:
-            raise ValueError("PIT attestation reviewer and audit reference are required")
-        if (
-            evidence.get("status") != "verified"
-            or evidence.get("availability_column") != availability_column
-        ):
-            raise ValueError("PIT attestation evidence does not match availability schema")
-        if availability_column is None or frame.available_time.isna().any():
-            raise ValueError("verified PIT data requires actual availability times")
-        return "verified", evidence_digest
+        evidence_digest, _ = matches[0]
+        data = attestation_dir / f"{evidence_digest}.json"
+        rows = [
+            {"asset_id": str(row.asset_id), "metric": str(row.metric),
+             "event_time": pd.Timestamp(row.event_time).isoformat(), "value": row.value}
+            for row in frame.itertuples(index=False)
+        ]
+        assessment = validate_pit_sidecar(
+            self.root, manifest, rows,
+            sidecar_bytes=data.read_bytes(), sidecar_sha256=evidence_digest,
+        )
+        return {
+            (item.source_asset_id, item.metric, item.event_time): item
+            for item in assessment.records
+        }, evidence_digest
 
     def read(
         self,
@@ -257,51 +269,9 @@ class FundamentalDataAdapter:
         if frame.duplicated(["asset_id", "metric", "event_time"]).any():
             raise ValueError("duplicate fundamental observation")
         frame["event_time"] = pd.to_datetime(frame["event_time"], utc=True, errors="raise")
-        has_available = "available_time" in frame
-        has_published = "published_at" in frame
-        availability_column = (
-            "available_time_or_published_at" if has_available and has_published else
-            "available_time" if has_available else
-            "published_at" if has_published else None
-        )
-        if has_available and has_published:
-            for row_number, (actual, published) in enumerate(
-                zip(frame.available_time, frame.published_at), start=2
-            ):
-                actual_time = self._parse_actual_time(actual, "available_time", row_number)
-                published_time = self._parse_actual_time(published, "published_at", row_number)
-                if (
-                    not pd.isna(actual_time) and not pd.isna(published_time)
-                    and actual_time != published_time
-                ):
-                    raise ValueError("available_time conflicts with published_at")
-        if has_available and has_published:
-            raw_availability = [
-                actual if actual is not None and not pd.isna(actual) and str(actual).strip()
-                else published
-                for actual, published in zip(frame.available_time, frame.published_at)
-            ]
-        elif availability_column is not None:
-            raw_availability = frame[availability_column].tolist()
-        else:
-            raw_availability = [None] * len(frame)
-        frame["available_time"] = [
-            self._parse_actual_time(value, availability_column or "available_time", i + 2)
-            for i, value in enumerate(raw_availability)
-        ]
-        known_availability = frame.available_time.dropna()
-        if not known_availability.empty and (
-            (known_availability < pd.Timestamp(START)).any()
-            or (known_availability >= pd.Timestamp(END)).any()
-        ):
-            raise ValueError("availability time outside development window")
-        known_pairs = frame.available_time.notna()
-        if known_pairs.any() and (frame.loc[known_pairs, "available_time"]
-                                  < frame.loc[known_pairs, "event_time"]).any():
-            raise ValueError("availability time precedes event time")
-        pit_status, attestation_digest = self._attestation_status(
-            manifest, frame, availability_column
-        )
+        frame["_source_asset_id"] = frame.asset_id.astype(str)
+        frame["_source_metric"] = frame.metric.astype(str)
+        pit_records, attestation_digest = self._pit_records(manifest, frame)
         definitions = [
             self.metrics.resolve_source(manifest["source"], str(row.metric))
             for row in frame.itertuples(index=False)
@@ -325,10 +295,25 @@ class FundamentalDataAdapter:
         frame["source"] = manifest["source"]
         frame["dataset_id"] = dataset_id
         frame["snapshot_sha256"] = snapshot_sha256
-        frame["pit_status"] = pit_status
+        ingested = manifest.get("ingested_at", manifest.get("published_at"))
+        frame["ingested_at"] = self._parse_actual_time(ingested, "ingested_at", 0)
+        assessments = [pit_records.get((str(raw_asset), str(raw_metric), event_time))
+                       for raw_asset, raw_metric, event_time in zip(
+                           frame._source_asset_id, frame._source_metric, frame.event_time)]
+        frame["available_at"] = [x.available_at if x else pd.NaT for x in assessments]
+        frame["available_at_upper_bound"] = [
+            x.available_at_upper_bound if x else pd.NaT for x in assessments
+        ]
+        frame["available_time"] = [
+            x.effective_available_at if x else pd.NaT for x in assessments
+        ]
+        frame["revision_id"] = [x.revision_id if x else None for x in assessments]
+        frame["evidence_sha256s"] = [list(x.evidence_sha256s) if x else [] for x in assessments]
+        frame["pit_status"] = [x.status if x else "UNVERIFIED" for x in assessments]
         frame = frame.loc[frame.event_time.ge(start_time) & frame.event_time.lt(end_time)]
         if access == "strict_pit" and (
-            pit_status != "verified" or frame.available_time.isna().any()
+            not frame.pit_status.isin(["VERIFIED", "CONSERVATIVE"]).all()
+            or frame.available_time.isna().any()
         ):
             raise ValueError("strict_pit rejects PIT-unverified or unavailable data")
         result = frame[OUTPUT_COLUMNS].sort_values(
@@ -354,7 +339,7 @@ def asof_join(
     metric: str,
     max_age: str,
 ) -> pd.DataFrame:
-    """Join only PIT-verified observations available at each market decision."""
+    """Join only evidence-backed observations available by each market decision."""
     age = _validated_max_age(max_age)
     required = set(OUTPUT_COLUMNS)
     if required - set(observations.columns):
@@ -368,8 +353,9 @@ def asof_join(
     source = observations.loc[observations.metric.eq(metric)].copy()
     if source.empty:
         raise ValueError(f"no verified observations for metric {metric}")
-    if source.pit_status.ne("verified").any() or source.available_time.isna().any():
-        raise ValueError("strict as-of join requires verified availability times")
+    if (not source.pit_status.isin(["VERIFIED", "CONSERVATIVE"]).all()
+            or source.available_time.isna().any()):
+        raise ValueError("strict as-of join requires verified availability times or bounds")
 
     assets = AssetRegistry()
     metrics = MetricRegistry()
