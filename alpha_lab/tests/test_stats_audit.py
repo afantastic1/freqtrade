@@ -11,12 +11,14 @@ import pytest
 from alpha_lab.experiment_registry import ExperimentRegistry
 from alpha_lab.research_store import ResearchStore
 from alpha_lab.stats.audit import (
+    _mechanism_verdict,
     audit_run,
     candidate_factor_key,
     load_incremental_predictions,
     monthly_gain_stability,
     rank_ic_sign_evidence,
 )
+from alpha_lab.stats.verdict import VerdictPolicy
 
 
 # --------------------------------------------------------------------------
@@ -110,6 +112,32 @@ def test_monthly_gain_stability_counts_signs_by_month():
     assert result["positive_months"] == 1
     assert result["positive_ratio"] == pytest.approx(0.5)
     assert result["monthly_sign_test_p"] == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize(
+    "overall,monthly_sign,preregistered,expected",
+    [
+        (1, 1, 1, "SUPPORTED"),
+        (1, -1, 1, "INCONCLUSIVE"),
+        (1, None, 1, "INCONCLUSIVE"),
+        (1, 1, None, "INCONCLUSIVE"),
+        (1, 0, 1, "INCONCLUSIVE"),
+    ],
+)
+def test_mechanism_requires_overall_monthly_and_preregistered_agreement(
+    overall, monthly_sign, preregistered, expected
+):
+    evidence = {
+        "rank_ic": 0.03 * overall,
+        "observed_sign": overall,
+        "monthly_observed_sign": monthly_sign,
+        "sign_test_p": 0.001 if monthly_sign else None,
+        "sign_test_p_adjusted": 0.002 if monthly_sign else None,
+        "mde_rank_ic": 0.01,
+    }
+    direction = None if preregistered is None else overall == preregistered
+    verdict = _mechanism_verdict(evidence, direction, VerdictPolicy())
+    assert verdict["label"] == expected
 
 
 # --------------------------------------------------------------------------

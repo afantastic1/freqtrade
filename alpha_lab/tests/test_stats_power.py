@@ -141,8 +141,23 @@ def test_paired_bootstrap_p_value_is_floored_not_zero():
         y, p_base, p_comb, block_size=4, n_boot=100, random_state=2
     )["auc"]
 
-    assert result.p_two_sided >= 1.0 / 100
+    assert result.p_two_sided >= 1.0 / 101
     assert result.ci_95_lower > 0.0
+
+
+def test_centered_bootstrap_null_is_not_automatically_significant():
+    rng = np.random.default_rng(20261019)
+    rejected = 0
+    for seed in range(30):
+        y = rng.integers(0, 2, 600)
+        base = np.clip(rng.normal(0.5, 0.08, 600), 0.01, 0.99)
+        combined = np.clip(base + rng.normal(0, 0.01, 600), 0.01, 0.99)
+        p = paired_block_bootstrap(
+            y, base, combined, block_size=6, n_boot=199, random_state=seed,
+            metrics=("logloss",),
+        )["logloss"].p_two_sided
+        rejected += p < 0.05
+    assert rejected <= 5
 
 
 def test_paired_bootstrap_rejects_misaligned_inputs():

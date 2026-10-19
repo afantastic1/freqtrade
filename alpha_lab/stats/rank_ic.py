@@ -45,7 +45,11 @@ def align_factor_label(factor, label) -> tuple[np.ndarray, np.ndarray]:
 def _rank_ic_from_arrays(f: np.ndarray, y: np.ndarray) -> float:
     if f.shape[0] < MIN_OBS:
         return float("nan")
-    if np.unique(f).shape[0] < 2 or np.unique(y).shape[0] < 2:
+    # 退化检查用 O(n) 的 min/max 代替 np.unique（后者在 bootstrap 内层
+    # 需要额外两次排序，是主要成本之一）。
+    if not (np.isfinite(f).all() and np.isfinite(y).all()):
+        return float("nan")
+    if f.min() == f.max() or y.min() == y.max():
         return float("nan")
 
     rf = _average_ranks(f)
@@ -140,17 +144,15 @@ def _summarise(draws: np.ndarray, point: float, *, n_boot, block_size) -> dict:
         }
 
     lower, upper = np.quantile(finite, [0.025, 0.975])
-    left = float((finite <= 0.0).mean())
-    right = float((finite >= 0.0).mean())
+    null_draws = finite - float(point)
+    extreme = int((np.abs(null_draws) >= abs(float(point))).sum())
 
     return {
         "point": point,
         "boot_sd": float(finite.std(ddof=1)),
         "ci_95_lower": float(lower),
         "ci_95_upper": float(upper),
-        "p_two_sided": float(
-            min(1.0, max(2.0 * min(left, right), 1.0 / valid))
-        ),
+        "p_two_sided": float((extreme + 1) / (valid + 1)),
         "valid_replicates": valid,
         "n_boot": n_boot,
         "block_size": block_size,

@@ -190,14 +190,11 @@ def paired_block_bootstrap(
         lower, upper = np.quantile(finite, [0.025, 0.975])
         positive_ratio = float((finite > 0.0).mean())
 
-        # bootstrap 百分位 p 值：H0 为"增量 = 0"。
-        # 两侧各取一次并取较小者 ×2，上限为 1；下限取 1/n_boot，
-        # 避免得到退化的 p=0（会让多重检验校正失去意义）。
-        left = float((finite <= 0.0).mean())
-        right = float((finite >= 0.0).mean())
-        p_two_sided = min(
-            1.0, max(2.0 * min(left, right), 1.0 / float(finite.shape[0]))
-        )
+        # 用中心化 bootstrap 构造 H0: effect=0 的零分布。未中心化抽样
+        # 分布围绕观测效应，直接计算其跨零比例并不是校准的检验。
+        null_draws = finite - float(points[name])
+        extreme = int((np.abs(null_draws) >= abs(float(points[name]))).sum())
+        p_two_sided = float((extreme + 1) / (valid + 1))
 
         results[name] = BootstrapResult(
             metric=name,

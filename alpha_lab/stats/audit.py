@@ -188,6 +188,7 @@ def rank_ic_sign_evidence(
         "mde_rank_ic": None,
         "sign_test_p": None,
         "observed_sign": None,
+        "monthly_observed_sign": None,
     }
 
     if rank_ic is not None and np.isfinite(rank_ic):
@@ -207,6 +208,11 @@ def rank_ic_sign_evidence(
         k = max(0, min(k, valid_months))
         result["sign_test_p"] = two_sided_binomial_p(k, valid_months)
         result["negative_months"] = k
+        positive = valid_months - k
+        if negative_ratio > 0.5:
+            result["monthly_observed_sign"] = -1
+        elif positive / valid_months > 0.5:
+            result["monthly_observed_sign"] = 1
 
     return result
 
@@ -618,8 +624,29 @@ def _mechanism_verdict(
     mde = rank_ic_evidence.get("mde_rank_ic")
 
     significant = adjusted_p is not None and adjusted_p < policy.alpha
+    monthly_sign = rank_ic_evidence.get("monthly_observed_sign")
+    overall_sign = rank_ic_evidence.get("observed_sign")
 
-    if significant and direction_consistent:
+    if monthly_sign in (None, 0) or not significant:
+        return {
+            "label": "INCONCLUSIVE",
+            "reasons": ["DIRECTION_NOT_RESOLVED"],
+            "rank_ic": rank_ic,
+            "sign_test_p": raw_p,
+            "sign_test_p_adjusted": adjusted_p,
+            "mde_rank_ic": mde,
+        }
+    if overall_sign not in (None, 0) and monthly_sign != overall_sign:
+        return {
+            "label": "INCONCLUSIVE",
+            "reasons": ["OVERALL_MONTHLY_DIRECTION_CONFLICT"],
+            "rank_ic": rank_ic,
+            "sign_test_p": raw_p,
+            "sign_test_p_adjusted": adjusted_p,
+            "mde_rank_ic": mde,
+        }
+
+    if direction_consistent:
         return {
             "label": "SUPPORTED",
             "reasons": ["PRE_REGISTERED_DIRECTION_CONFIRMED"],
@@ -629,7 +656,7 @@ def _mechanism_verdict(
             "mde_rank_ic": mde,
         }
 
-    if significant and not direction_consistent:
+    if not direction_consistent:
         return {
             "label": "REJECTED",
             "reasons": ["PRE_REGISTERED_DIRECTION_CONFIDENTLY_CONTRADICTED"],

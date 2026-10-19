@@ -85,13 +85,38 @@ def record_reviews(
 
 
 def append_decisions(
-    root: str | Path, decisions: list[dict], *, log_name: str
+    root: str | Path,
+    decisions: list[dict],
+    *,
+    log_name: str,
+    dedupe_key: str | None = "analysis_id",
 ) -> Path:
-    """把 Research Decision 追加到 append-only JSONL。"""
+    """把 Research Decision 追加到 append-only JSONL。
+
+    `dedupe_key` 非空时，已存在相同键值的决策会被跳过，保证重复运行幂等
+    （JSONL 仍然是只追加、可回放的）。
+    """
     path = Path(root) / "notes" / log_name
     path.parent.mkdir(parents=True, exist_ok=True)
+
+    seen = set()
+    if dedupe_key and path.is_file():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                existing = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            key = existing.get(dedupe_key)
+            if key is not None:
+                seen.add(key)
+
     with path.open("a", encoding="utf-8") as handle:
         for decision in decisions:
+            key = decision.get(dedupe_key) if dedupe_key else None
+            if key is not None and key in seen:
+                continue
             handle.write(
                 json.dumps(
                     {"recorded_at": _utc_now(), **decision},
@@ -101,6 +126,8 @@ def append_decisions(
                 )
                 + "\n"
             )
+            if key is not None:
+                seen.add(key)
     return path
 
 

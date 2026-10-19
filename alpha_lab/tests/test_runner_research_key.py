@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -122,6 +123,22 @@ def test_changed_source_baseline_or_data_does_not_reuse(tmp_path, monkeypatch):
     assert len({first["run_id"], source_changed["run_id"],
                 baseline_changed["run_id"], data_changed["run_id"]}) == 4
     assert len(calls) == 4
+
+
+def test_same_size_and_mtime_data_replacement_does_not_reuse(tmp_path, monkeypatch):
+    calls, data_dir = setup_runner(tmp_path, monkeypatch)
+    candidate = create_candidate(tmp_path)
+    config = create_config(tmp_path)
+    first = runner.run_experiment(config, candidate_dir=candidate)
+    data = data_dir / "BTC_USDT_USDT-1h-futures.feather"
+    before = data.stat()
+    data.write_bytes(b"v2")
+    os.utime(data, ns=(before.st_atime_ns, before.st_mtime_ns))
+
+    second = runner.run_experiment(config, candidate_dir=candidate)
+
+    assert second["run_id"] != first["run_id"]
+    assert len(calls) == 2
 
 
 def test_corrupt_completed_artifacts_are_not_reused(tmp_path, monkeypatch):

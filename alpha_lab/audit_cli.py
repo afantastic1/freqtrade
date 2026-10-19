@@ -35,8 +35,8 @@ from alpha_lab.stats.selfcheck import (
 from alpha_lab.stats.verdict import VerdictPolicy
 
 DEFAULT_ROOT = Path("user_data/research/alpha_lab")
-METHOD_VERSION = "stats-audit-v2"
-SELFCHECK_METHOD_VERSION = "stats-selfcheck-v1"
+METHOD_VERSION = "stats-audit-v3-centered-null"
+SELFCHECK_METHOD_VERSION = "stats-selfcheck-v2-centered-null"
 METHOD_HISTORY = (
     "`stats-audit-v1` 的逐月符号检验存在缺陷（只取一侧尾，当少数侧为负时会把 "
     "p 误算成 ≈1），已在记录任何结论前撤回；`v2` 修正了该缺陷，并在自检中"

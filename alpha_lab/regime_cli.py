@@ -74,7 +74,7 @@ END = "2025-01-01"
 TRAIN = ("2022-01-01", "2022-10-01")
 TEST = ("2023-01-01", "2025-01-01")
 
-METHOD_VERSION = "prereg-a-v1"
+METHOD_VERSION = "prereg-a-v2"
 DECISION_LOG = "prereg_decisions.jsonl"
 
 METRICS = ("auc", "logloss", "brier")
@@ -757,8 +757,11 @@ def render_markdown(payload: dict) -> str:
 # 记录
 # ---------------------------------------------------------------------------
 def _review_row(result: dict, run_id: str, random_state: int, n_boot: int) -> dict:
+    policy = VerdictPolicy()
     return {
         "run_id": run_id,
+        "analysis_id": f"prereg-a-{result['config']['id']}",
+        "config_id": result["config"]["id"],
         "timeframe": result["config"]["timeframe"],
         "horizon": result["config"]["horizon"],
         "n": result["n_test"],
@@ -773,7 +776,7 @@ def _review_row(result: dict, run_id: str, random_state: int, n_boot: int) -> di
                 "mde": minimum_detectable_effect(
                     result["metrics"][name]["boot_sd"]
                 ),
-                "practical_threshold": 0.005,
+                "practical_threshold": policy.threshold_for(name),
                 "adjusted_p": (
                     result["adjusted_p_within_direction"] if name == "auc" else None
                 ),
@@ -787,65 +790,81 @@ def _review_row(result: dict, run_id: str, random_state: int, n_boot: int) -> di
 
 
 def record(payload: dict, *, random_state: int, n_boot: int) -> dict:
-    run_id = ensure_analysis_run(
-        RESEARCH_ROOT,
-        analysis_id=f"prereg-a-{METHOD_VERSION}",
-        config={
-            "analysis": "prereg_direction_a_regime",
-            "method_version": METHOD_VERSION,
-            "configs": [c["id"] for c in CONFIGS],
-            "splits": payload["splits"],
-            "not_run": [item["id"] for item in payload["not_run"]],
-        },
-        result_dir=NOTES,
-        code_version=METHOD_VERSION,
-    )
+    """每个配置一条独立的 experiments 行 + 一条 statistical_reviews 行。
 
-    reviews = [
-        _review_row(result, run_id, random_state, n_boot)
-        for result in payload["results"]
-    ]
-    review_ids = record_reviews(
-        RESEARCH_ROOT, reviews, method_version=METHOD_VERSION
-    )
+    为什么要**逐配置**建 run：`statistical_reviews` 的幂等键是
+    `(run_id, method_version, n_boot, random_state)`。若两个方向共用一个
+    run_id，多条评议会互相覆盖（INSERT OR IGNORE）。因此每个配置必须是
+    自己的 run。
+    """
+    run_ids = []
+    review_ids = []
+    decisions = []
 
-    decisions = [
-        {
-            "analysis_id": f"prereg-a-{result['config']['id']}",
-            "run_id": run_id,
-            "hypothesis": (
-                f"{result['config']['id']}: 反转强度随 "
-                f"{result['config']['regime_label']} 上升（预注册符号 "
-                f"{result['config']['preregistered_sign']:+d}）"
-            ),
-            "conclusion": {
-                "overall_verdict": result["overall_verdict"]["label"],
-                "incremental_verdict": result["verdict"]["label"],
-                "incremental_reasons": list(result["verdict"]["reasons"]),
-                "mechanism_verdict": result["mechanism_verdict"]["label"],
-                "mechanism_reasons": list(result["mechanism_verdict"]["reasons"]),
-                "delta_auc": result["metrics"]["auc"]["point"],
-                "delta_auc_ci": [
-                    result["metrics"]["auc"]["ci_95_lower"],
-                    result["metrics"]["auc"]["ci_95_upper"],
-                ],
-                "mde_auc": result["mde_auc_bootstrap"],
-                "p_adjusted_within_direction": result[
-                    "adjusted_p_within_direction"
-                ],
+    for result in payload["results"]:
+        config = result["config"]
+        run_id = ensure_analysis_run(
+            RESEARCH_ROOT,
+            analysis_id=f"prereg-a-{config['id']}",
+            config={
+                "analysis": "prereg_direction_a_regime",
+                "method_version": METHOD_VERSION,
+                "config_id": config["id"],
+                "setting": config,
+                "splits": payload["splits"],
+                "n_boot": n_boot,
+                "random_state": random_state,
             },
-            "next_hypothesis": None,
-            "next_actions": (
-                ["stop"] if result["overall_verdict"]["label"] != "SUPPORTED"
-                else ["consider independent replication"]
-            ),
-        }
-        for result in payload["results"]
-    ]
+            result_dir=NOTES,
+            code_version=METHOD_VERSION,
+        )
+        run_ids.append(run_id)
+        review_ids.extend(
+            record_reviews(
+                RESEARCH_ROOT,
+                [_review_row(result, run_id, random_state, n_boot)],
+                method_version=METHOD_VERSION,
+            )
+        )
+        decisions.append(
+            {
+                "analysis_id": f"prereg-a-{config['id']}",
+                "run_id": run_id,
+                "hypothesis": (
+                    f"{config['id']}: 反转强度随 {config['regime_label']} "
+                    f"上升（预注册符号 {config['preregistered_sign']:+d}）"
+                ),
+                "conclusion": {
+                    "overall_verdict": result["overall_verdict"]["label"],
+                    "incremental_verdict": result["verdict"]["label"],
+                    "incremental_reasons": list(result["verdict"]["reasons"]),
+                    "mechanism_verdict": result["mechanism_verdict"]["label"],
+                    "mechanism_reasons": list(
+                        result["mechanism_verdict"]["reasons"]
+                    ),
+                    "delta_auc": result["metrics"]["auc"]["point"],
+                    "delta_auc_ci": [
+                        result["metrics"]["auc"]["ci_95_lower"],
+                        result["metrics"]["auc"]["ci_95_upper"],
+                    ],
+                    "mde_auc": result["mde_auc_bootstrap"],
+                    "p_adjusted_within_direction": result[
+                        "adjusted_p_within_direction"
+                    ],
+                },
+                "next_hypothesis": None,
+                "next_actions": (
+                    ["stop"]
+                    if result["overall_verdict"]["label"] != "SUPPORTED"
+                    else ["consider independent replication"]
+                ),
+            }
+        )
+
     path = append_decisions(RESEARCH_ROOT, decisions, log_name=DECISION_LOG)
 
     return {
-        "run_id": run_id,
+        "run_ids": run_ids,
         "review_ids": review_ids,
         "decision_log": str(path),
     }
@@ -858,7 +877,23 @@ def main(argv=None) -> int:
     parser.add_argument("--random-state", type=int, default=42)
     parser.add_argument("--out-dir", default=str(NOTES))
     parser.add_argument("--record", action="store_true")
+    parser.add_argument(
+        "--record-only",
+        action="store_true",
+        help="只读取已生成的 JSON 并追加记录（不重算）",
+    )
     args = parser.parse_args(argv)
+
+    if args.record_only:
+        path = Path(args.out_dir) / "prereg_a_results.json"
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        info = record(
+            payload,
+            random_state=payload["random_state"],
+            n_boot=payload["n_boot"],
+        )
+        print(f"recorded: {info}")
+        return 0
 
     payload = run_direction_a(
         n_boot=args.n_boot,

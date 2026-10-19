@@ -45,6 +45,11 @@ EVALUATION_COLUMNS = {
     "indexed_at": "TEXT",
 }
 
+STATISTICAL_REVIEW_COLUMNS = {
+    "analysis_id": "TEXT",
+    "config_id": "TEXT",
+}
+
 
 def _canonical_json(value) -> str:
     return json.dumps(
@@ -160,6 +165,8 @@ class ResearchStore:
                 CREATE TABLE IF NOT EXISTS statistical_reviews (
                     review_id TEXT PRIMARY KEY,
                     run_id TEXT NOT NULL,
+                    analysis_id TEXT,
+                    config_id TEXT,
                     candidate_id TEXT,
                     method_version TEXT NOT NULL,
                     timeframe TEXT,
@@ -181,6 +188,9 @@ class ResearchStore:
                     FOREIGN KEY (run_id) REFERENCES experiments(run_id)
                 )
             """)
+            self._add_missing_columns(
+                conn, "statistical_reviews", STATISTICAL_REVIEW_COLUMNS
+            )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_statistical_reviews_run "
                 "ON statistical_reviews(run_id, method_version)"
@@ -648,8 +658,15 @@ class ResearchStore:
         method_version: str,
         n_boot: int,
         random_state: int,
+        analysis_id: str | None = None,
+        config_id: str | None = None,
     ) -> str:
-        key = f"{run_id}|{method_version}|{n_boot}|{random_state}"
+        key = "|".join(
+            str(value) for value in (
+                run_id, analysis_id or "", config_id or "",
+                method_version, n_boot, random_state,
+            )
+        )
         return hashlib.sha256(key.encode("utf-8")).hexdigest()
 
     def record_statistical_review(
@@ -684,22 +701,44 @@ class ResearchStore:
             method_version,
             int(review.get("bootstrap_samples", 0)),
             int(review.get("random_state", 0)),
+            review.get("analysis_id"),
+            review.get("config_id"),
+        )
+
+        payload_json = json.dumps(
+            review, sort_keys=True, separators=(",", ":"), allow_nan=False
         )
 
         with self.connect() as conn:
+            existing = conn.execute(
+                "SELECT candidate_id, payload_json FROM statistical_reviews "
+                "WHERE review_id = ?", (review_id,)
+            ).fetchone()
+            if existing is not None:
+                if (
+                    existing["candidate_id"] == candidate_id
+                    and existing["payload_json"] == payload_json
+                ):
+                    return review_id
+                raise ValueError(
+                    f"conflicting statistical review identity: {review_id}"
+                )
             conn.execute(
                 """
-                INSERT OR IGNORE INTO statistical_reviews (
-                    review_id, run_id, candidate_id, method_version,
+                INSERT INTO statistical_reviews (
+                    review_id, run_id, analysis_id, config_id,
+                    candidate_id, method_version,
                     timeframe, horizon, n, n_eff, block_size,
                     bootstrap_samples, primary_metric, effect, ci_low,
                     ci_high, mde, adjusted_p, verdict, mechanism_verdict,
                     payload_json, created_at
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     review_id,
                     run_id,
+                    review.get("analysis_id"),
+                    review.get("config_id"),
                     candidate_id,
                     method_version,
                     review.get("timeframe"),
@@ -716,7 +755,7 @@ class ResearchStore:
                     primary_item.get("adjusted_p"),
                     (review.get("verdict") or {}).get("label", "INCONCLUSIVE"),
                     (review.get("mechanism_verdict") or {}).get("label"),
-                    json.dumps(review, sort_keys=True, allow_nan=False),
+                    payload_json,
                     utc_now(),
                 ),
             )

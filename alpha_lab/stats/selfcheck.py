@@ -63,8 +63,9 @@ from alpha_lab.stats.verdict import (
 METRICS = ("auc", "logloss", "brier")
 # 默认只比较两个关键块长：block=1（方法上无效）与 block=horizon（主口径）。
 # 每增加一个块长都会成比例增加安慰剂成本（bootstrap 以 n log n 排序为瓶颈）。
+# 元组语义： (名称, 绝对块长)，其中 `None` 表示"等于标签 horizon"。
 PLACEBO_BLOCKS = (("one", 1), ("horizon", None))
-PLACEBO_BLOCKS_EXTENDED = (("one", 1), ("horizon", None), ("3x_horizon", 3))
+PLACEBO_BLOCKS_EXTENDED = (("one", 1), ("horizon", None), ("three", 3))
 
 
 # ---------------------------------------------------------------------------
@@ -315,7 +316,8 @@ def _placebo_blocks_for_run(
 
     out = {}
     for name, factor in blocks:
-        size = 1 if factor is None else int(factor) * horizon
+        # `factor=None` -> 块长等于标签 horizon（主口径）；整数 -> 绝对块长。
+        size = horizon if factor is None else int(factor)
         size = int(min(max(size, 1), n))
         fpr_ci = 0
         fpr_p = 0
@@ -593,6 +595,18 @@ def placebo_walk_forward(
             comb["probability"].to_numpy(dtype=float),
         )
 
+    # 平移只在**有标签可用时间的行**内部做（这些行才可能被 walk-forward
+    # 选中为样本）。若直接 np.roll 整个数组，会破坏
+    # "有 target 就必须有 label_available_time" 的数据不变量。
+    full_target = dataset["target"].to_numpy(dtype=float)
+    valid_mask = dataset["label_available_time"].notna().to_numpy()
+    valid_values = full_target[valid_mask]
+
+    def shifted_target(offset: int) -> np.ndarray:
+        shifted = full_target.copy()
+        shifted[valid_mask] = np.roll(valid_values, offset % valid_values.shape[0])
+        return shifted
+
     y0, pb0, pc0 = run_once(dataset["target"].to_numpy(dtype=float))
     real = paired_block_bootstrap(
         y0, pb0, pc0,
@@ -601,17 +615,18 @@ def placebo_walk_forward(
     )["auc"]
 
     rng = np.random.default_rng(random_state)
-    n = y0.shape[0]
+    n_valid = valid_values.shape[0]
     min_lag = max(horizon * 3, 24)
-    count = min(n_shift, n - 2 * min_lag)
-    shifts = rng.choice(np.arange(min_lag, n - min_lag), size=count, replace=False)
+    count = min(n_shift, max(1, n_valid - 2 * min_lag))
+    shifts = rng.choice(
+        np.arange(min_lag, n_valid - min_lag), size=count, replace=False
+    )
 
     per_block = {name: {"ci": 0, "p": 0, "deltas": []} for name, _ in PLACEBO_BLOCKS}
     for k in shifts:
-        target = np.roll(y0, int(k))
-        y, p_base, p_comb = run_once(target)
+        y, p_base, p_comb = run_once(shifted_target(int(k)))
         for name, factor in PLACEBO_BLOCKS:
-            size = 1 if factor is None else int(factor) * horizon
+            size = horizon if factor is None else int(factor)
             result = paired_block_bootstrap(
                 y, p_base, p_comb,
                 block_size=int(min(max(size, 1), y.shape[0])),
@@ -627,10 +642,9 @@ def placebo_walk_forward(
     for name, values in per_block.items():
         m = len(values["deltas"])
         deltas = np.asarray(values["deltas"], dtype=float)
+        spec = dict(PLACEBO_BLOCKS).get(name)
         out[name] = {
-            "block_size": 1 if name == "one" else (
-                horizon if name == "horizon" else 3 * horizon
-            ),
+            "block_size": int(horizon if spec is None else spec),
             "n_shift": m,
             "mean_delta_auc": float(deltas.mean()) if m else None,
             "fpr_ci_excludes_zero": values["ci"] / m if m else None,
@@ -644,7 +658,7 @@ def placebo_walk_forward(
             "candidate": candidate_name,
             "n_shift": count,
             "n_boot": n_boot,
-            "n_test_rows": int(n),
+            "n_test_rows": int(y0.shape[0]),
         },
         "real": real.as_dict(),
         "placebo": out,
