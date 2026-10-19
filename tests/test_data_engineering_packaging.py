@@ -14,6 +14,7 @@ def test_data_engineering_has_standalone_distribution_metadata():
 
     assert metadata["project"]["name"] == "alpha-lab-data-engineering"
     assert metadata["project"]["scripts"]["data-engineering"] == "data_engineering.__main__:main"
+    assert "data_engineering.scripts" in metadata["tool"]["setuptools"]["packages"]
     assert "pandas" in " ".join(metadata["project"]["dependencies"])
     assert "freqtrade" not in " ".join(metadata["project"]["dependencies"])
 
@@ -41,10 +42,10 @@ def test_packaged_catalog_schema_accepts_legacy_and_current_manifests():
 
 def test_packaged_pit_sidecar_schema_is_available_and_versioned():
     schema = json.loads(
-        files("data_engineering").joinpath("schemas", "pit-evidence-v1.schema.json")
+        files("data_engineering").joinpath("schemas", "pit-evidence-v2.schema.json")
         .read_text()
     )
-    assert schema["properties"]["schema_version"]["const"] == "pit-evidence-v1"
+    assert schema["properties"]["schema_version"]["const"] == "pit-evidence-v2"
     assert schema["$defs"]["record"]["properties"]["status"]["enum"] == [
         "VERIFIED", "CONSERVATIVE", "UNVERIFIED", "REJECTED"
     ]

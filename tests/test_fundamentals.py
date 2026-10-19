@@ -42,16 +42,22 @@ def _publish(tmp_path, *, dataset_id="coinmetrics_btc_dev_v1", rows=None,
 
 
 def _attest(root, manifest, rows, *, status="VERIFIED", availability="2024-01-02T03:00:00Z"):
-    evidence_bytes = json.dumps({
-        "kind": "source_release_record", "revision_id": "release-v1",
-        "available_at": availability,
-    }).encode()
-    evidence_hash = hashlib.sha256(evidence_bytes).hexdigest()
     evidence_root = root / "pit_evidence"
     evidence_root.mkdir(exist_ok=True)
-    (evidence_root / evidence_hash).write_bytes(evidence_bytes)
     records = []
+    evidence = []
     for row in rows:
+        evidence_bytes = json.dumps({
+            "kind": "source_release_record", "dataset_id": manifest["dataset_id"],
+            "snapshot_sha256": manifest["sha256"],
+            "source_asset_id": row["asset_id"], "metric": row["metric"],
+            "event_time": row["event_time"], "value": row["value"],
+            "revision_id": "release-v1", "available_at": availability,
+        }, sort_keys=True).encode()
+        evidence_hash = hashlib.sha256(evidence_bytes).hexdigest()
+        (evidence_root / evidence_hash).write_bytes(evidence_bytes)
+        evidence.append({"sha256": evidence_hash, "source_uri": "https://source/release",
+                         "media_type": "application/json", "role": "source_record"})
         records.append({
             "source_asset_id": row["asset_id"], "metric": row["metric"],
             "event_time": row["event_time"], "revision_id": "release-v1",
@@ -59,13 +65,12 @@ def _attest(root, manifest, rows, *, status="VERIFIED", availability="2024-01-02
             "available_at": availability, "evidence_sha256s": [evidence_hash],
         })
     sidecar = {
-        "schema_version": "pit-evidence-v1", "dataset_id": manifest["dataset_id"],
+        "schema_version": "pit-evidence-v2", "dataset_id": manifest["dataset_id"],
         "snapshot_sha256": manifest["sha256"], "source": manifest["source"],
         "ingested_at": manifest["ingested_at"], "status": status,
         "review": {"reviewer": "steward", "audit_reference": "audit-1",
                    "reviewed_at": "2026-10-19T00:00:00Z"},
-        "evidence": [{"sha256": evidence_hash, "source_uri": "https://source/release",
-                      "media_type": "application/json"}],
+        "evidence": evidence,
         "records": records,
     }
     payload = (json.dumps(sidecar, sort_keys=True) + "\n").encode()

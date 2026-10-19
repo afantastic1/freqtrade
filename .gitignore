@@ -12,6 +12,10 @@ user_data/*
 user_data/freqaimodels/*
 user_data/models/*
 user_data/notebooks/*
+# Retired transfer archive payloads; the canonical runtime package is data_engineering/.
+data_engineering_starter/data_engineering/
+data_engineering_starter/docs/
+data_engineering_starter/tests/
 freqtrade-plot.html
 freqtrade-profit-plot.html
 freqtrade/rpc/api_server/ui/*

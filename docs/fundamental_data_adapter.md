@@ -2,35 +2,31 @@
 
 ## Construction report
 
-Implemented on branch `codex/fundamental-data-adapter`. The adapter adds
-versioned economic entity and metric registries, pinned read-only snapshot
-access, attestation-gated strict PIT reads, an as-of join, and an Alpha Lab
-feature bridge. The coverage audit now consumes those same registries, so its
-entity labels cannot drift from feature normalization.
+Implemented on branch `codex/fundamental-data-adapter`. The sole maintained
+runtime package is `data_engineering/`; `data_engineering_starter/` is a retired
+handoff archive and its installer refuses to copy duplicate source. The adapter
+provides versioned registries, read-only Catalog access, value-bound PIT v2
+evidence, as-of joins, coverage preflight, and the Alpha Lab feature bridge.
 
-Changed implementation files are `data_engineering/registries.py`,
-`data_engineering/fundamentals.py`, `data_engineering/alpha_lab_features.py`,
-and `data_engineering/scripts/fundamental_coverage_audit.py`. Regression tests
-cover the adapter, registry scopes, as-of availability, the Alpha Lab handoff,
-and catalog coverage audit. Existing v0.1 Catalog source files were already
-present as untracked workspace assets and remain outside the feature commit;
-this branch expects that installed package to be present. No Catalog snapshots,
-raw files, SQLite records, or Freqtrade market data were changed.
+Changed files include `data_engineering/pit.py`, `pit_audit.py`,
+`local_acceptance.py`, `coverage.py`, `fundamentals.py`, and
+`alpha_lab_features.py`, plus versioned schemas and tests. Existing Catalog,
+DefiLlama, registry and coverage modules are now part of the standalone package.
+No Catalog snapshots, raw files, SQLite records, or Freqtrade market data were
+changed.
 
 Verification completed:
 
-- Fundamental adapter/catalog integration tests: 56 passed.
-- Frozen Alpha Lab suite: 297 passed.
+- Data Engineering unit and integration suite: 68 passed.
+- Clean-checkout package install and Data Engineering suite: 68 passed.
 - `compileall` and `git diff --check`: passed.
-- Read-only snapshot audit: 14/14 manifests, 30 metric series, 0 errors;
-  all PIT statuses remain unverified.
+- Read-only local catalog acceptance: 14/14 snapshot hashes verified, 30 metric
+  series, 31,980 rows read exploratorily, and 14/14 strict reads rejected.
 
-There are no verified publication-time attestations in the current Catalog, so
-strict PIT joins correctly reject all current fundamental snapshots. No
-fundamental feature can yet enter a strict Alpha Lab evaluation until a data
-steward audits and attests its historical availability. The untracked v0.1
-package must be committed or installed separately before this feature commit
-can be replayed in a clean checkout.
+No current snapshot has evidence proving both its exact historical value and
+its source revision and availability time. All 14 remain `UNVERIFIED` and no
+fundamental feature can enter strict Alpha Lab evaluation. Source-level PIT
+proof remains a data governance blocker.
 
 The adapter reads immutable Data Engineering v0.1 snapshots from the existing
 Catalog. It does not download, publish, copy, or modify source data. It does not
@@ -87,10 +83,12 @@ observations = adapter.read_many(
 ```
 
 The adapter verifies the snapshot with the existing Catalog verifier on each
-read. Its normalized frame contains `asset_id`, `tradable_asset_id`,
-`entity_scope`, `metric`, `event_time`, `available_time`, `value`, `source`,
-`dataset_id`, `snapshot_sha256`, and `pit_status`. Frame metadata also records
-asset registry version, metric registry version, and access mode.
+read. Its normalized frame includes `asset_id`, `tradable_asset_id`,
+`entity_scope`, `metric`, `event_time`, `available_at`,
+`available_at_upper_bound`, effective `available_time`, `ingested_at`,
+`revision_id`, evidence hashes, `value`, source and snapshot identity, and
+`pit_status`. Frame metadata records registry versions, snapshot pins and
+access mode.
 
 Allowed event range is `[2022-01-01, 2025-01-01)` UTC. Start and end filters
 must themselves stay inside this interval. The adapter scans only
@@ -100,24 +98,24 @@ development interval. Catalog and snapshot paths may not contain symlinks.
 
 ## Access modes and PIT attestation
 
-`exploratory` reads return observations even when PIT status is
-`unverified` or `declared_not_audited`. Actual source `available_time` or
-`published_at` values are preserved when present; an absent timestamp remains
-null. Event time and fixed delays are never used to fabricate availability.
+`exploratory` reads return observations with their PIT status. An ordinary
+source timestamp remains a source declaration and is not copied into effective
+`available_time`; without qualifying evidence, effective availability is null.
+Event time, ingestion time and fixed delays are never used to fabricate
+availability.
 
-`strict_pit` requires all rows in the pinned snapshot to have actual
-availability timestamps and an append-only, content-addressed attestation
-sidecar at `pit_attestations/<evidence_sha256>.json`. The sidecar must bind the
-dataset ID, snapshot SHA, `status: verified`, reviewer, audit reference, and
-timestamp column (one of `available_time`, `published_at`, or
-`available_time_or_published_at`). Its content hash is the filename; snapshot
-manifests remain unchanged. When both time columns are present, non-null values
-must agree, and a null `available_time` may use the actual `published_at`
-value. A source-provided timestamp alone is not an audit.
+`strict_pit` accepts only PIT sidecar v2 at
+`pit_attestations/<sidecar_sha256>.json`. Each `VERIFIED` or `CONSERVATIVE`
+row must reference hashed evidence binding the Catalog identity, source asset,
+metric, event time, exact value, revision, source reference and exact release
+time or audited upper bound. A CONSERVATIVE join uses the upper bound. Legacy
+v1 attestations lack value identity and cannot authorize strict access. Schema,
+row coverage, evidence hashes, snapshot identity and temporal boundaries are
+checked fail-closed.
 
-No current snapshot has a PIT attestation. Therefore all current fundamental
-datasets are rejected by `strict_pit`; adding a timestamp column without an
-independent audit does not change this.
+No current snapshot has a qualifying PIT v2 attestation. Therefore all 14
+current fundamental datasets are rejected by `strict_pit`; adding a timestamp
+column without historical value and revision evidence does not change this.
 
 ## Strict as-of feature handoff
 
@@ -146,9 +144,16 @@ Feature names include the economic scope, such as
 `fundamental__token__CapMrktEstUSD` and
 `fundamental__ecosystem__chain_tvl_usd`. Series metadata carries registry
 versions, dataset IDs, snapshot hashes, sources, maximum age, and PIT status.
-When a registered metric has no observations, the bridge returns an all-null
-Series marked `not_evaluable`. No feature is zero-filled, and no value is
-carried before its first available observation.
+When no observation is joined, the bridge returns an all-null Series marked
+`NOT_EVALUABLE`; joined PIT status is preserved (`VERIFIED`, `CONSERVATIVE`, or
+`MIXED`). No feature is zero-filled, and no value is carried before its first
+effective availability.
+
+`CrossSectionalDataset.frame()` uses complete cases across its selected
+features and target, so a row missing any feature is dropped. The optional
+`preflight_feature_coverage()` reports per-feature coverage and effective valid
+asset counts at each time using caller-supplied minimums. It does not fill data,
+alter the Dataset, or modify frozen evaluation/statistical methods.
 
 This bridge feeds the existing `CrossSectionalDataset` input contract. It does
 not modify the frozen runner, statistics, inference, evaluation, or Research
@@ -158,8 +163,10 @@ feature bridge.
 
 ## Current coverage and limitations
 
-The read-only Catalog audit found 14 of 14 expected manifests, 30 metric
-series, and zero errors. All remain PIT-unverified. SOL and BNB have fewer
-Coin Metrics series than BTC/ETH/XRP. XRP ecosystem TVL begins on
-2024-03-23; earlier XRP values remain null. Coverage does not establish that
-an observation was available at its event time.
+The real local acceptance command is
+`python -m data_engineering.scripts.validate_local_catalog`. It verified all
+14 snapshot content hashes and 30 metric series, read 31,980 rows in
+exploratory mode, and confirmed 14 strict-PIT rejections. SOL and BNB have no
+Coin Metrics `AdrActCnt` series. XRP ecosystem TVL begins on 2024-03-23, and
+Solana Fees and Revenue each lack the first 44 days of 2022. These missing
+observations remain absent; coverage does not prove historical availability.

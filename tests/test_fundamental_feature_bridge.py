@@ -10,6 +10,7 @@ from data_engineering.catalog import publish
 from data_engineering.fundamentals import OUTPUT_COLUMNS, FundamentalDataAdapter
 from data_engineering.fundamentals import _STRICT_PIT_READ_TOKEN, _frame_fingerprint
 from data_engineering.alpha_lab_features import build_fundamental_features
+from data_engineering.coverage import preflight_feature_coverage
 
 
 def _panel():
@@ -25,7 +26,8 @@ def _panel():
     return MarketPanel(frame)
 
 
-def _record(asset_id, tradable, scope, metric, value, available, source):
+def _record(asset_id, tradable, scope, metric, value, available, source,
+            status="VERIFIED"):
     return {
         "asset_id": asset_id, "tradable_asset_id": tradable,
         "entity_scope": scope, "metric": metric,
@@ -34,7 +36,7 @@ def _record(asset_id, tradable, scope, metric, value, available, source):
         "ingested_at": "2024-12-31T00:00:00Z", "revision_id": "fixture-v1",
         "evidence_sha256s": ["c" * 64],
         "value": value, "source": source, "dataset_id": "dataset-v1",
-        "snapshot_sha256": "b" * 64, "pit_status": "VERIFIED",
+        "snapshot_sha256": "b" * 64, "pit_status": status,
     }
 
 
@@ -108,6 +110,45 @@ def test_feature_series_are_accepted_by_existing_cross_sectional_dataset():
     assert features["fundamental__token__CapMrktEstUSD"].attrs["pit_status"] == "VERIFIED"
 
 
+def test_conservative_feature_status_is_preserved():
+    panel = _panel()
+    observations = _observations()
+    observations["pit_status"] = "CONSERVATIVE"
+    observations["available_at"] = pd.NaT
+    observations["available_at_upper_bound"] = observations.available_time
+    observations.attrs["_strict_pit_read_fingerprint"] = _frame_fingerprint(observations)
+
+    features = build_fundamental_features(
+        panel, observations, metrics=["CapMrktEstUSD"], max_age="72h"
+    )
+
+    assert features["fundamental__token__CapMrktEstUSD"].attrs["pit_status"] == "CONSERVATIVE"
+
+
+def test_coverage_preflight_reports_effective_assets_and_complete_case_loss():
+    panel = _panel()
+    index = panel.frame.index
+    factor_a = pd.Series([1.0, 2.0, None, 4.0, 5.0, 6.0], index=index)
+    factor_b = pd.Series([1.0, 2.0, 3.0, None, 5.0, 6.0], index=index)
+
+    report = preflight_feature_coverage(
+        panel, {"a": factor_a, "b": factor_b},
+        min_assets_per_time=1, min_feature_coverage=0.5,
+    )
+
+    assert report["eligible_rows"] == 6
+    assert report["complete_case_rows"] == 4
+    assert report["feature_coverage"]["a"]["coverage"] == 5 / 6
+    assert report["effective_assets_by_time"]["2024-03-20T00:00:00+00:00"] == 3
+    assert report["status"] == "READY"
+
+    blocked = preflight_feature_coverage(
+        panel, {"a": factor_a, "b": factor_b},
+        min_assets_per_time=3, min_feature_coverage=0.9,
+    )
+    assert blocked["status"] == "NOT_EVALUABLE"
+
+
 def test_duplicate_or_unknown_feature_metric_fails_closed():
     panel = _panel()
     observations = _observations()
@@ -149,12 +190,6 @@ def test_end_to_end_attested_catalog_read_asof_and_dataset(tmp_path):
     manifests = []
     evidence_dir = catalog_root / "pit_evidence"
     evidence_dir.mkdir(parents=True)
-    evidence_bytes = json.dumps({
-        "kind": "source_release_record", "revision_id": "rel-v1",
-        "available_at": "2024-03-19T02:00:00Z",
-    }).encode()
-    evidence_hash = hashlib.sha256(evidence_bytes).hexdigest()
-    (evidence_dir / evidence_hash).write_bytes(evidence_bytes)
     for ticker, value in (("btc", 123), ("eth", 234), ("sol", 345),
                           ("bnb", 456), ("xrp", 567)):
         dataset_id = f"coinmetrics_{ticker}_dev_v1"
@@ -167,14 +202,23 @@ def test_end_to_end_attested_catalog_read_asof_and_dataset(tmp_path):
         manifest = publish(catalog_root, dataset_id=dataset_id,
                            kind="fundamental", source="coinmetrics-community",
                            input_path=source)
+        evidence_bytes = json.dumps({
+            "kind": "source_release_record", "dataset_id": manifest["dataset_id"],
+            "snapshot_sha256": manifest["sha256"], "source_asset_id": ticker,
+            "metric": "CapMrktEstUSD", "event_time": "2024-03-19T00:00:00Z",
+            "value": value, "revision_id": "rel-v1",
+            "available_at": "2024-03-19T02:00:00Z",
+        }, sort_keys=True).encode()
+        evidence_hash = hashlib.sha256(evidence_bytes).hexdigest()
+        (evidence_dir / evidence_hash).write_bytes(evidence_bytes)
         evidence = {
-            "schema_version": "pit-evidence-v1", "dataset_id": manifest["dataset_id"],
+            "schema_version": "pit-evidence-v2", "dataset_id": manifest["dataset_id"],
             "snapshot_sha256": manifest["sha256"], "source": manifest["source"],
             "ingested_at": manifest["ingested_at"], "status": "VERIFIED",
             "review": {"reviewer": "steward", "audit_reference": f"audit-{ticker}",
                        "reviewed_at": "2026-10-19T00:00:00Z"},
             "evidence": [{"sha256": evidence_hash, "source_uri": "https://source/release",
-                          "media_type": "application/json"}],
+                          "media_type": "application/json", "role": "source_record"}],
             "records": [{"source_asset_id": ticker, "metric": "CapMrktEstUSD",
                          "event_time": "2024-03-19T00:00:00Z", "revision_id": "rel-v1",
                          "status": "VERIFIED", "availability_basis": "source_release_record",

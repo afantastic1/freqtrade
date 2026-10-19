@@ -41,16 +41,20 @@ def build_fundamental_features(
         selected = observations.loc[observations.metric.eq(metric)]
         if selected.empty:
             values = pd.Series(np.nan, index=panel.frame.index, name=name, dtype=float)
-            used = selected
+            resulting_status = "NOT_EVALUABLE"
         else:
             joined = asof_join(panel, observations, metric=metric, max_age=max_age)
             values = joined.fundamental_value.astype(float).rename(name)
-            used = selected
-        provenance = used if not used.empty else observations
+            used_statuses = set(joined.loc[values.notna(), "pit_status"].dropna())
+            resulting_status = (
+                next(iter(used_statuses)) if len(used_statuses) == 1 else
+                "MIXED" if used_statuses else "NOT_EVALUABLE"
+            )
+        provenance = selected if not selected.empty else observations
         values.attrs.update({
             "asset_registry_version": asset_registry.version,
             "metric_registry_version": metric_registry.version,
-            "pit_status": "VERIFIED" if not used.empty else "NOT_EVALUABLE",
+            "pit_status": resulting_status,
             "dataset_ids": sorted(provenance.dataset_id.dropna().astype(str).unique()),
             "snapshot_sha256": sorted(provenance.snapshot_sha256.dropna().astype(str).unique()),
             "sources": sorted(provenance.source.dropna().astype(str).unique()),

@@ -1,4 +1,4 @@
-"""Metadata-only PIT eligibility audit for catalogued fundamental snapshots."""
+"""PIT eligibility audit for catalogued fundamental snapshots."""
 
 from __future__ import annotations
 
@@ -76,8 +76,11 @@ def build_pit_audit(root: str | Path) -> dict:
                     sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
                 except (OSError, UnicodeDecodeError, json.JSONDecodeError):
                     continue
-                if (sidecar.get("dataset_id") == dataset_id
-                        and sidecar.get("snapshot_sha256") == digest):
+                if (
+                    isinstance(sidecar, dict)
+                    and sidecar.get("dataset_id") == dataset_id
+                    and sidecar.get("snapshot_sha256") == digest
+                ):
                     matches.append((sidecar_path, sidecar))
         if len(matches) > 1:
             dataset["pit_status"] = "REJECTED"
@@ -146,7 +149,8 @@ def render_markdown(report: dict) -> str:
         gaps = "; ".join(item["missing_evidence"])
         lines.append(
             f"| `{item['dataset_id']}` | `{item['source']}` | {metrics} | "
-            f"{item['pit_status']} | no | {gaps} |"
+            f"{item['pit_status']} | "
+            f"{'yes' if item['strict_research_eligible'] else 'no'} | {gaps} |"
         )
     if report["errors"]:
         lines.extend(["", "## Catalog errors", ""])

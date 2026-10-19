@@ -38,7 +38,7 @@ def _sidecar(manifest, *, status="VERIFIED", available_at="2024-01-02T00:00:00Z"
     if upper_bound is not None:
         record["available_at_upper_bound"] = upper_bound
     return {
-        "schema_version": "pit-evidence-v1",
+        "schema_version": "pit-evidence-v2",
         "dataset_id": manifest["dataset_id"], "snapshot_sha256": manifest["sha256"],
         "source": manifest["source"], "ingested_at": manifest["ingested_at"],
         "status": status,
@@ -48,7 +48,7 @@ def _sidecar(manifest, *, status="VERIFIED", available_at="2024-01-02T00:00:00Z"
                    "reviewed_at": "2026-10-19T00:00:00Z"},
         "evidence": [
             {"sha256": digest, "source_uri": f"https://evidence.example/{digest}",
-             "media_type": "application/json"}
+             "media_type": "application/json", "role": "source_record"}
             for digest in evidence_hashes or []
         ],
         "records": [record],
@@ -68,11 +68,26 @@ def _write_evidence(root, payload):
     return digest
 
 
+def _source_record(root, manifest, row, *, revision_id="cm-v42", value="1",
+                   available_at="2024-01-02T00:00:00Z", upper_bound=None,
+                   kind="source_release_record"):
+    record = {
+        "kind": kind, "dataset_id": manifest["dataset_id"],
+        "snapshot_sha256": manifest["sha256"],
+        "source_asset_id": row["asset_id"], "metric": row["metric"],
+        "event_time": row["event_time"], "value": value,
+        "revision_id": revision_id,
+    }
+    if available_at is not None:
+        record["available_at"] = available_at
+    if upper_bound is not None:
+        record["available_at_upper_bound"] = upper_bound
+    return _write_evidence(root, json.dumps(record, sort_keys=True).encode())
+
+
 def test_verified_requires_row_level_release_evidence_and_revision(tmp_path):
     root, manifest, rows = _published(tmp_path)
-    evidence = json.dumps({"kind": "source_release_record", "revision_id": "cm-v42",
-                           "available_at": "2024-01-02T00:00:00Z"}).encode()
-    evidence_hash = _write_evidence(root, evidence)
+    evidence_hash = _source_record(root, manifest, rows[0])
     payload, digest = _encode(_sidecar(manifest, evidence_hashes=[evidence_hash]))
 
     result = validate_pit_sidecar(root, manifest, rows, sidecar_bytes=payload,
@@ -87,10 +102,10 @@ def test_verified_requires_row_level_release_evidence_and_revision(tmp_path):
 
 def test_conservative_requires_audited_upper_bound_evidence(tmp_path):
     root, manifest, rows = _published(tmp_path)
-    evidence_hash = _write_evidence(root, json.dumps({
-        "kind": "audited_upper_bound", "revision_id": "cm-v42",
-        "available_at_upper_bound": "2024-01-05T00:00:00Z",
-    }).encode())
+    evidence_hash = _source_record(
+        root, manifest, rows[0], available_at=None,
+        upper_bound="2024-01-05T00:00:00Z", kind="audited_upper_bound",
+    )
     sidecar = _sidecar(manifest, status="CONSERVATIVE", available_at=None,
                        upper_bound="2024-01-05T00:00:00Z", basis="audited_upper_bound",
                        evidence_hashes=[evidence_hash])
@@ -123,20 +138,40 @@ def test_unverified_cannot_claim_event_time_or_fixed_delay_as_availability(tmp_p
         ({"available_at": "2023-12-31T23:59:59Z"}, "precedes event_time"),
         ({"revision_id": None}, "revision_id is required"),
         ({"evidence_sha256s": []}, "require revision_id and evidence"),
+        ({"revision_id": "wrong-revision"}, "does not prove snapshot observation value"),
     ],
 )
 def test_verified_rejects_conflicting_or_incomplete_row_evidence(tmp_path, changes, match):
     root, manifest, rows = _published(tmp_path)
-    evidence_hash = _write_evidence(root, json.dumps({
-        "kind": "source_release_record", "revision_id": "cm-v42",
-        "available_at": "2024-01-02T00:00:00Z",
-    }).encode())
+    evidence_hash = _source_record(root, manifest, rows[0])
     record = _sidecar(manifest, evidence_hashes=[evidence_hash])["records"][0]
     record.update(changes)
     payload, digest = _encode({**_sidecar(manifest, evidence_hashes=[evidence_hash]),
                                "records": [record]})
 
     with pytest.raises(ValueError, match=match):
+        validate_pit_sidecar(root, manifest, rows, sidecar_bytes=payload,
+                             sidecar_sha256=digest)
+
+
+def test_historical_revision_must_prove_the_actual_snapshot_value(tmp_path):
+    root, manifest, rows = _published(tmp_path)
+    # The source was later revised to 2, while this snapshot contains 1.
+    evidence_hash = _source_record(root, manifest, rows[0], value="2")
+    payload, digest = _encode(_sidecar(manifest, evidence_hashes=[evidence_hash]))
+
+    with pytest.raises(ValueError, match="does not prove snapshot observation value"):
+        validate_pit_sidecar(root, manifest, rows, sidecar_bytes=payload,
+                             sidecar_sha256=digest)
+
+
+def test_evidence_cannot_fabricate_a_different_release_time(tmp_path):
+    root, manifest, rows = _published(tmp_path)
+    evidence_hash = _source_record(root, manifest, rows[0],
+                                   available_at="2024-01-03T00:00:00Z")
+    payload, digest = _encode(_sidecar(manifest, evidence_hashes=[evidence_hash]))
+
+    with pytest.raises(ValueError, match="does not prove snapshot observation value"):
         validate_pit_sidecar(root, manifest, rows, sidecar_bytes=payload,
                              sidecar_sha256=digest)
 
@@ -174,5 +209,17 @@ def test_sidecar_cannot_cover_a_different_snapshot_or_future_ingestion(tmp_path)
     sidecar["ingested_at"] = "2027-01-01T00:00:00Z"
     payload, digest = _encode(sidecar)
     with pytest.raises(ValueError, match="ingested_at mismatch"):
+        validate_pit_sidecar(root, manifest, rows, sidecar_bytes=payload,
+                             sidecar_sha256=digest)
+
+
+def test_legacy_v1_sidecar_cannot_promote_a_row_without_value_proof(tmp_path):
+    root, manifest, rows = _published(tmp_path)
+    sidecar = _sidecar(manifest, status="UNVERIFIED", available_at=None,
+                       basis="unknown", revision_id=None)
+    sidecar["schema_version"] = "pit-evidence-v1"
+    payload, digest = _encode(sidecar)
+
+    with pytest.raises(ValueError, match="unsupported PIT sidecar version"):
         validate_pit_sidecar(root, manifest, rows, sidecar_bytes=payload,
                              sidecar_sha256=digest)

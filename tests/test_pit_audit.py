@@ -39,19 +39,24 @@ def test_pit_audit_requires_a_complete_valid_sidecar_for_strict_eligibility(tmp_
         writer.writerow(["btc", "CapMrktEstUSD", "2024-01-01T00:00:00Z", 1])
     manifest = publish(catalog, dataset_id="verified", kind="fundamental",
                        source="coinmetrics-community", input_path=source)
-    evidence = json.dumps({"kind": "source_release_record", "revision_id": "r1",
-                           "available_at": "2024-01-02T00:00:00Z"}).encode()
+    evidence = json.dumps({
+        "kind": "source_release_record", "dataset_id": manifest["dataset_id"],
+        "snapshot_sha256": manifest["sha256"], "source_asset_id": "btc",
+        "metric": "CapMrktEstUSD", "event_time": "2024-01-01T00:00:00Z",
+        "value": "1", "revision_id": "r1",
+        "available_at": "2024-01-02T00:00:00Z",
+    }, sort_keys=True).encode()
     evidence_hash = hashlib.sha256(evidence).hexdigest()
     (catalog / "pit_evidence").mkdir()
     (catalog / "pit_evidence" / evidence_hash).write_bytes(evidence)
     sidecar = {
-        "schema_version": "pit-evidence-v1", "dataset_id": "verified",
+        "schema_version": "pit-evidence-v2", "dataset_id": "verified",
         "snapshot_sha256": manifest["sha256"], "source": manifest["source"],
         "ingested_at": manifest["ingested_at"], "status": "VERIFIED",
         "review": {"reviewer": "audit", "audit_reference": "proof-1",
                    "reviewed_at": "2026-10-19T00:00:00Z"},
         "evidence": [{"sha256": evidence_hash, "source_uri": "https://source/release",
-                      "media_type": "application/json"}],
+                      "media_type": "application/json", "role": "source_record"}],
         "records": [{"source_asset_id": "btc", "metric": "CapMrktEstUSD",
                      "event_time": "2024-01-01T00:00:00Z", "revision_id": "r1",
                      "status": "VERIFIED", "availability_basis": "source_release_record",
@@ -69,3 +74,4 @@ def test_pit_audit_requires_a_complete_valid_sidecar_for_strict_eligibility(tmp_
     assert report["strict_eligible_dataset_count"] == 1
     assert report["snapshots_opened_for_sidecar_validation"] == 1
     assert report["datasets"][0]["pit_status"] == "VERIFIED"
+    assert "| VERIFIED | yes |  |" in render_markdown(report)

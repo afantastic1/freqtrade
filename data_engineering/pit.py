@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 import hashlib
 from importlib.resources import files
 import json
@@ -14,7 +14,7 @@ import pandas as pd
 from jsonschema import Draft202012Validator, FormatChecker
 
 
-PIT_SCHEMA_VERSION = "pit-evidence-v1"
+PIT_SCHEMA_VERSION = "pit-evidence-v2"
 PIT_STATUSES = frozenset({"VERIFIED", "CONSERVATIVE", "UNVERIFIED", "REJECTED"})
 
 
@@ -61,9 +61,16 @@ def _manifest_ingested_at(manifest: dict) -> pd.Timestamp:
 
 
 def _validate_schema(document: dict) -> None:
+    schemas = {
+        "pit-evidence-v1": "pit-evidence-v1.schema.json",
+        "pit-evidence-v2": "pit-evidence-v2.schema.json",
+    }
+    schema_name = schemas.get(document.get("schema_version"))
+    if schema_name is None:
+        raise ValueError(f"unsupported PIT sidecar version: {document.get('schema_version')}")
     schema = json.loads(
         files("data_engineering").joinpath(
-            "schemas", "pit-evidence-v1.schema.json"
+            "schemas", schema_name
         ).read_text(encoding="utf-8")
     )
     validator = Draft202012Validator(schema, format_checker=FormatChecker())
@@ -87,14 +94,53 @@ def _verify_evidence(root: Path, evidence: list[dict]) -> dict[str, dict]:
         content = path.read_bytes()
         if hashlib.sha256(content).hexdigest() != digest:
             raise ValueError(f"evidence SHA-256 mismatch: {digest}")
+        descriptor = item
         try:
             parsed = json.loads(content)
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise ValueError(f"PIT evidence must be JSON: {digest}") from exc
+            raise ValueError(f"PIT evidence must be a structured JSON record: {digest}") from exc
         if not isinstance(parsed, dict):
             raise ValueError(f"PIT evidence must be a JSON object: {digest}")
-        result[digest] = parsed
+        result[digest] = {"descriptor": descriptor, "claims": parsed}
     return result
+
+
+def _same_numeric_value(left, right) -> bool:
+    try:
+        return Decimal(str(left)) == Decimal(str(right))
+    except (InvalidOperation, ValueError, TypeError):
+        return False
+
+
+def _require_row_evidence(
+    evidence_by_hash: dict[str, dict], refs: tuple[str, ...], *,
+    manifest: dict, source_row: dict, item: dict, revision_id: str,
+    expected_kind: str, effective_time_key: str,
+) -> None:
+    for digest in refs:
+        evidence = evidence_by_hash[digest]
+        claim = evidence["claims"]
+        if claim is None or evidence["descriptor"]["role"] != "source_record":
+            continue
+        event_time = _time(source_row["event_time"], "source event_time")
+        claim_event_time = claim.get("event_time")
+        if claim_event_time is None:
+            continue
+        if (
+            claim.get("kind") == expected_kind
+            and claim.get("dataset_id") == manifest["dataset_id"]
+            and claim.get("snapshot_sha256") == manifest["sha256"]
+            and claim.get("source_asset_id") == str(source_row["asset_id"])
+            and claim.get("metric") == str(source_row["metric"])
+            and _time(claim_event_time, "evidence event_time") == event_time
+            and _same_numeric_value(claim.get("value"), source_row["value"])
+            and claim.get("revision_id") == revision_id
+            and claim.get(effective_time_key) == item[effective_time_key]
+        ):
+            return
+    raise ValueError(
+        f"{expected_kind} evidence does not prove snapshot observation value, revision, and time"
+    )
 
 
 def validate_pit_sidecar(
@@ -119,6 +165,8 @@ def validate_pit_sidecar(
     if not isinstance(document, dict):
         raise ValueError("PIT sidecar must be a JSON object")
     _validate_schema(document)
+    if document.get("schema_version") != PIT_SCHEMA_VERSION:
+        raise ValueError(f"unsupported PIT sidecar version: {document.get('schema_version')}")
     if (document["dataset_id"] != manifest.get("dataset_id")
             or document["snapshot_sha256"] != manifest.get("sha256")
             or document["source"] != manifest.get("source")):
@@ -179,13 +227,11 @@ def validate_pit_sidecar(
                 raise ValueError("availability precedes event_time")
             if effective > ingested_at:
                 raise ValueError("availability is after ingested_at")
-            if not any(
-                evidence_by_hash[digest].get("revision_id") == revision_id
-                and evidence_by_hash[digest].get("available_at") == item["available_at"]
-                and evidence_by_hash[digest].get("kind") == item["availability_basis"]
-                for digest in refs
-            ):
-                raise ValueError("VERIFIED row evidence does not support revision and available_at")
+            _require_row_evidence(
+                evidence_by_hash, refs, manifest=manifest,
+                source_row=source_by_key[key], item=item, revision_id=revision_id,
+                expected_kind=item["availability_basis"], effective_time_key="available_at",
+            )
         elif status == "CONSERVATIVE":
             if not revision_id:
                 raise ValueError("CONSERVATIVE revision_id is required")
@@ -198,14 +244,12 @@ def validate_pit_sidecar(
                 raise ValueError("availability precedes event_time")
             if effective > ingested_at:
                 raise ValueError("availability is after ingested_at")
-            if not any(
-                evidence_by_hash[digest].get("revision_id") == revision_id
-                and evidence_by_hash[digest].get("available_at_upper_bound")
-                    == item["available_at_upper_bound"]
-                and evidence_by_hash[digest].get("kind") == "audited_upper_bound"
-                for digest in refs
-            ):
-                raise ValueError("CONSERVATIVE evidence does not support revision and upper bound")
+            _require_row_evidence(
+                evidence_by_hash, refs, manifest=manifest,
+                source_row=source_by_key[key], item=item, revision_id=revision_id,
+                expected_kind="audited_upper_bound",
+                effective_time_key="available_at_upper_bound",
+            )
         else:
             if available_at is not None or upper_bound is not None:
                 raise ValueError(f"{status} records cannot claim availability")
