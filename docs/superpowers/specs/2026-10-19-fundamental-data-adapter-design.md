@@ -50,7 +50,11 @@ The normalized frame contains at least:
 availability time. Neither `event_time` nor a fixed lag may be substituted.
 Source-provided publication times are not automatically PIT-certified. Only an
 explicitly audited manifest status of `verified`, paired with a real
-availability-time column, is eligible for strict PIT reads.
+availability-time column, is eligible for strict PIT reads. Because the v0.1
+Catalog manifests are immutable, PIT certification is recorded in an
+append-only content-addressed sidecar at `pit_attestations/<sha256>.json`; it
+binds the dataset ID, snapshot SHA, reviewer, audit reference, status, and
+availability column without rewriting the manifest.
 
 `exploratory` reads may return unverified observations and their metadata.
 `strict_pit` reads reject any unverified or missing availability time. No write
@@ -64,6 +68,9 @@ only a verified `available_time <= decision_time` row can match. Callers must
 specify a maximum observation age. An unmatched value stays null. No
 event-time-based as-of join is exposed for unverified data.
 
+Add an adapter-owned `read_many` method for multiple explicitly pinned
+snapshots. It verifies every snapshot and returns a combined frame whose
+content fingerprint and attestation set are checked again before a join.
 Add a separate Data Engineering bridge that returns a feature mapping aligned
 to the existing `MarketPanel` index and accepted by
 `CrossSectionalDataset(..., features=...)`. It does not patch the frozen Alpha
@@ -89,9 +96,10 @@ scope separation, unknown mappings, exploratory versus strict access, unknown
 publication time preservation, future/out-of-window rejection, as-of leakage,
 maximum age, missing metrics and XRP pre-listing nulls, pinned digest/version
 selection, checksum and manifest tampering, and symlink/path rejection.
-An end-to-end test publishes a temporary fundamental snapshot using the
-existing Catalog API, reads it through the adapter, and aligns features to a
-synthetic MarketPanel without changing existing market loaders or SQLite.
+End-to-end tests publish temporary fundamental snapshots using the existing
+Catalog API, add content-addressed attestation sidecars, read multiple pins via
+the adapter, and align features to a synthetic MarketPanel without changing
+existing market loaders or SQLite.
 
 ## Known data limitations
 
