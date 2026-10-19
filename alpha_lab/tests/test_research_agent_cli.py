@@ -1,4 +1,5 @@
 import json
+import sqlite3
 
 import pandas as pd
 import pytest
@@ -20,6 +21,48 @@ def test_gateway_accepts_fixed_history_request_and_rejects_arguments(tmp_path):
         execute_request(root=tmp_path)
 
 
+def test_gateway_redacts_persisted_errors_and_paths_from_history_and_show(tmp_path):
+    from alpha_lab.experiment_registry import ExperimentRegistry
+    from alpha_lab.research_store import ResearchStore
+
+    db = tmp_path / "experiments.sqlite3"
+    registry = ExperimentRegistry(db)
+    run_id = registry.create_run(config_hash="redaction", config_json="{}")
+    with sqlite3.connect(db) as conn:
+        conn.execute(
+            "UPDATE experiments SET status='failed', error=?, finished_at='2024-01-01T00:00:00Z' WHERE run_id=?",
+            ("secret=/private/user_data/heldout.csv sentinel=918273", run_id),
+        )
+    store = ResearchStore(db)
+    # Ensure schema setup did not replace or clear the historical failure row.
+    assert store.show_run(run_id)["error"].startswith("secret=")
+    request = tmp_path / "candidates/current/request.json"
+    request.parent.mkdir(parents=True, exist_ok=True)
+    request.write_text(json.dumps({"action": "history"}))
+    history = execute_request(root=tmp_path)
+    assert "error" not in history["runs"][0]
+    assert "report_path" not in history["runs"][0]
+    assert "918273" not in json.dumps(history)
+    request.write_text(json.dumps({"action": "show", "run_id": run_id}))
+    shown = execute_request(root=tmp_path)
+    assert "error" not in shown["run"]
+    assert "source_path" not in shown["run"]
+    assert "918273" not in json.dumps(shown)
+
+
+def test_module_entrypoint_propagates_rejection_exit_code():
+    import ast
+    from pathlib import Path
+
+    tree = ast.parse(Path("alpha_lab/research_agent_cli.py").read_text())
+    guard = next(node for node in tree.body if isinstance(node, ast.If)
+                 and isinstance(node.test, ast.Compare))
+    assert isinstance(guard.body[0], ast.Raise)
+    call = guard.body[0].exc
+    assert isinstance(call, ast.Call) and isinstance(call.func, ast.Name)
+    assert call.func.id == "SystemExit"
+
+
 def test_gateway_rejects_symlink_request(tmp_path):
     folder = tmp_path / "candidates/current"
     folder.mkdir(parents=True)
@@ -28,6 +71,105 @@ def test_gateway_rejects_symlink_request(tmp_path):
     (folder / "request.json").symlink_to(outside)
     with pytest.raises(ValueError, match="symlink"):
         execute_request(root=tmp_path)
+
+
+def test_gateway_rejects_symlinked_panel_directory(tmp_path):
+    candidate = tmp_path / "candidates/current"
+    candidate.mkdir(parents=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "panel.csv").write_text("not,a,panel\n")
+    (tmp_path / "panels").symlink_to(outside, target_is_directory=True)
+    (candidate / "request.json").write_text(
+        json.dumps({"action": "cross_sectional_run", "panel_id": "panel"})
+    )
+    (candidate / "config.json").write_text(json.dumps({
+        "start": "2024-01-01T00:00:00Z", "train_end": "2024-06-01T00:00:00Z",
+        "test_end": "2024-12-01T00:00:00Z", "end": "2025-01-01T00:00:00Z",
+    }))
+
+    with pytest.raises(ValueError, match="symlink"):
+        execute_request(root=tmp_path)
+
+
+def test_gateway_rejects_held_out_request_before_opening_panel(tmp_path, monkeypatch):
+    import alpha_lab.research_agent_cli as cli
+
+    candidate = tmp_path / "candidates/current"
+    candidate.mkdir(parents=True)
+    panel_dir = tmp_path / "panels"
+    panel_dir.mkdir()
+    (panel_dir / "held.csv").write_text("held-out sentinel must not be opened")
+    config = {
+        "start": "2024-01-01T00:00:00Z", "train_end": "2024-06-01T00:00:00Z",
+        "test_end": "2024-12-01T00:00:00Z", "end": "2025-01-02T00:00:00Z",
+    }
+    (candidate / "config.json").write_text(json.dumps(config))
+    (candidate / "request.json").write_text(
+        json.dumps({"action": "cross_sectional_run", "panel_id": "held"})
+    )
+    monkeypatch.setattr(cli, "load_bounded_panel_csv", lambda *_: pytest.fail("panel opened"))
+    with pytest.raises(ValueError, match="research dates outside development interval"):
+        execute_request(root=tmp_path)
+
+
+def test_gateway_rejects_held_out_panel_with_sanitized_error(tmp_path):
+    candidate = tmp_path / "candidates/current"
+    candidate.mkdir(parents=True)
+    panel_dir = tmp_path / "panels"
+    panel_dir.mkdir()
+    future_time = pd.Timestamp("2025-01-02 00:00:00", tz="UTC")
+    frame = pd.DataFrame({
+        "open_time": [future_time], "symbol": ["BTC/USDT:USDT"],
+        "open": [987654.321], "high": [987654.321], "low": [987654.321],
+        "close": [987654.321], "volume": [123456.789],
+        "close_time": [future_time + pd.Timedelta(hours=1)],
+        "available_time": [future_time + pd.Timedelta(hours=1, seconds=1)],
+    })
+    frame.to_csv(panel_dir / "future.csv", index=False)
+    (candidate / "request.json").write_text(
+        json.dumps({"action": "cross_sectional_run", "panel_id": "future"})
+    )
+    (candidate / "config.json").write_text(json.dumps({
+        "start": "2024-01-01T00:00:00Z", "train_end": "2024-06-01T00:00:00Z",
+        "test_end": "2024-12-01T00:00:00Z", "end": "2025-01-01T00:00:00Z",
+    }))
+
+    with pytest.raises(ValueError, match="held-out data is forbidden") as error:
+        execute_request(root=tmp_path)
+    assert "987654.321" not in str(error.value)
+    assert "2025-01-02" not in str(error.value)
+
+
+def test_gateway_cli_sanitizes_panel_validation_errors(tmp_path, monkeypatch, capsys):
+    import alpha_lab.research_agent_cli as cli
+
+    candidate = tmp_path / "candidates/current"
+    candidate.mkdir(parents=True)
+    panel_dir = tmp_path / "panels"
+    panel_dir.mkdir()
+    future_time = pd.Timestamp("2025-01-02 00:00:00", tz="UTC")
+    frame = pd.DataFrame({
+        "open_time": [future_time], "symbol": ["BTC/USDT:USDT"],
+        "open": [987654.321], "high": [987654.321], "low": [987654.321],
+        "close": [987654.321], "volume": [123456.789],
+        "close_time": [future_time + pd.Timedelta(hours=1)],
+        "available_time": [future_time + pd.Timedelta(hours=1, seconds=1)],
+    })
+    frame.to_csv(panel_dir / "future.csv", index=False)
+    (candidate / "request.json").write_text(
+        json.dumps({"action": "cross_sectional_run", "panel_id": "future"})
+    )
+    (candidate / "config.json").write_text("{}")
+    execute = cli.execute_request
+    monkeypatch.setattr(cli, "ROOT", tmp_path)
+    monkeypatch.setattr(cli, "execute_request", lambda: execute(root=tmp_path))
+
+    assert cli.main() == 2
+    output = capsys.readouterr().out
+    assert "request rejected or failed" in output
+    assert "987654.321" not in output
+    assert "2025-01-02" not in output
 
 
 def test_fixed_transform_gateway_never_imports_malicious_factor(tmp_path):

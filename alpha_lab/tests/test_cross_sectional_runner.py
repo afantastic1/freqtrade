@@ -2,6 +2,7 @@ import json
 import sqlite3
 
 import pandas as pd
+import pytest
 
 from alpha_lab.data.market_panel import MarketPanel
 from alpha_lab.cross_sectional_runner import run_cross_sectional
@@ -42,6 +43,22 @@ def test_synthetic_runner_is_idempotent_and_has_separate_sqlite_evidence(tmp_pat
         supporting_evidence=["synthetic fixture"], opposing_evidence=[],
         conclusion="INCONCLUSIVE", next_hypothesis="none", next_actions=["ARCHIVE"])
     assert research.list_decisions(first["run_id"])[0]["decision_id"] == decision["decision_id"]
+    for conclusion in (
+        "SUPPORTED", "SUPPORTED_WITH_CAVEATS", " inconclusive", "inconclusive", {"status": "SUPPORTED"},
+        {"verdict": "supported"}, {"decision": "SUPPORTED"},
+        {"conclusion": "SUPPORTED"}, {"status": "INCONCLUSIVE", "detail": "SUPPORTED"},
+    ):
+        with pytest.raises(ValueError, match="closed non-supported vocabulary"):
+            research.create_decision(
+                run_id=first["run_id"], candidate_source_hash=first["candidate_source_hash"],
+                supporting_evidence=["synthetic fixture"], opposing_evidence=[],
+                conclusion=conclusion, next_hypothesis="none", next_actions=["ARCHIVE"])
+    for conclusion in ("INCONCLUSIVE", "REJECTED", "NOT_EVALUABLE"):
+        research.create_decision(
+            run_id=first["run_id"], candidate_source_hash=first["candidate_source_hash"],
+            supporting_evidence=[], opposing_evidence=[], conclusion=conclusion,
+            next_hypothesis="none", next_actions=["ARCHIVE"])
+    assert len(research.list_decisions(first["run_id"])) == 4
     summary = tmp_path / "runs" / first["run_id"] / "summary.json"
     assert json.loads(summary.read_text())["run_id"] == first["run_id"]
     (summary.parent / "predictions.csv").unlink()
@@ -71,6 +88,24 @@ def test_changed_panel_content_changes_research_identity(tmp_path):
     changed.loc[(times[5], "A"), "close"] += 0.1
     second = run_cross_sectional(config, MarketPanel(changed), root=tmp_path)
     assert first["run_id"] != second["run_id"]
+
+
+def test_cross_sectional_decision_gate_rejects_missing_mode_evidence(tmp_path):
+    from alpha_lab.cross_sectional_store import CrossSectionalStore
+    from alpha_lab.experiment_registry import ExperimentRegistry
+    from alpha_lab.research_store import ResearchStore
+
+    db = tmp_path / "experiments.db"
+    registry = ExperimentRegistry(db)
+    run_id = registry.create_run(config_hash="missing-mode", config_json="{}")
+    CrossSectionalStore(db).append(run_id, "missing-mode", {"candidate_source_hash": "source"})
+    registry.complete_run(run_id, tmp_path / "run")
+    with pytest.raises(ValueError, match="evidence mode is missing or invalid"):
+        ResearchStore(db).create_decision(
+            run_id=run_id, candidate_source_hash="source", supporting_evidence=[],
+            opposing_evidence=[], conclusion="INCONCLUSIVE", next_hypothesis="none",
+            next_actions=["ARCHIVE"],
+        )
 
 
 def test_cross_sectional_evidence_is_append_only(tmp_path):

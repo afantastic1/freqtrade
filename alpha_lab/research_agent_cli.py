@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 
 from alpha_lab.cross_sectional_cli import load_bounded_panel_csv
-from alpha_lab.cross_sectional_runner import run_cross_sectional
+from alpha_lab.cross_sectional_runner import _validate_research_window, run_cross_sectional
 from alpha_lab.cross_sectional_store import CrossSectionalStore
 from alpha_lab.experiment_registry import ExperimentRegistry
 from alpha_lab.research_store import ResearchStore
@@ -19,6 +19,19 @@ RUN_ID = re.compile(r"^[a-f0-9]{32}$")
 SHA256 = re.compile(r"^[a-f0-9]{64}$")
 
 
+def _public_value(value):
+    """Strip internal paths, manifests and exception text from gateway output."""
+    if isinstance(value, dict):
+        return {
+            key: _public_value(item)
+            for key, item in value.items()
+            if not any(token in key.lower() for token in ("path", "error", "manifest", "traceback"))
+        }
+    if isinstance(value, list):
+        return [_public_value(item) for item in value]
+    return value
+
+
 def _load_fixed_json(path: Path, parent: Path) -> dict:
     if path.is_symlink() or any(part.is_symlink() for part in path.parents if part != Path(".")):
         raise ValueError("symlink is not permitted")
@@ -30,6 +43,21 @@ def _load_fixed_json(path: Path, parent: Path) -> dict:
     return value
 
 
+def _validate_panel_path(path: Path, parent: Path) -> None:
+    """Reject direct and ancestor symlinks before opening a panel file."""
+    resolved_parent = parent.resolve()
+    resolved_path = path.resolve()
+    if not resolved_path.is_relative_to(resolved_parent):
+        raise ValueError("panel path escaped trusted panel directory")
+    current = path
+    while current == parent or current.is_relative_to(parent):
+        if current.is_symlink():
+            raise ValueError("panel symlink is not permitted")
+        if current == parent:
+            break
+        current = current.parent
+
+
 def execute_request(*, root: Path = ROOT) -> dict:
     request = _load_fixed_json(root / "candidates/current/request.json", root / "candidates")
     action = request.get("action")
@@ -37,22 +65,22 @@ def execute_request(*, root: Path = ROOT) -> dict:
     ExperimentRegistry(db_path)
     store = ResearchStore(db_path)
     if action == "history" and set(request) == {"action"}:
-        return {"runs": store.list_runs(limit=30)}
+        return {"runs": _public_value(store.list_runs(limit=30))}
     if action == "family_review" and set(request) == {"action"}:
         return CrossSectionalStore(db_path).family_review()
     if action == "show" and set(request) == {"action", "run_id"}:
         if not isinstance(request["run_id"], str) or not RUN_ID.fullmatch(request["run_id"]):
             raise ValueError("invalid run_id")
-        return {"run": store.show_run(request["run_id"]),
-                "decisions": store.list_decisions(request["run_id"])}
+        return {"run": _public_value(store.show_run(request["run_id"])),
+                "decisions": _public_value(store.list_decisions(request["run_id"]))}
     if action == "cross_sectional_run" and set(request) == {"action", "panel_id"}:
         panel_id = request["panel_id"]
         if not isinstance(panel_id, str) or not ID.fullmatch(panel_id):
             raise ValueError("invalid panel_id")
         config = _load_fixed_json(root / "candidates/current/config.json", root / "candidates")
         panel_path = root / "panels" / f"{panel_id}.csv"
-        if panel_path.is_symlink():
-            raise ValueError("panel symlink is not permitted")
+        _validate_panel_path(panel_path, root / "panels")
+        _validate_research_window(config)
         panel = load_bounded_panel_csv(panel_path)
         summary = run_cross_sectional(config, panel, root=root)
         return {"run_id": summary["run_id"], "mode": summary["mode"],
@@ -77,8 +105,17 @@ def execute_request(*, root: Path = ROOT) -> dict:
 
 
 def main():
-    print(json.dumps(execute_request(), sort_keys=True, default=str, allow_nan=False))
+    try:
+        result = execute_request()
+        output = json.dumps(result, sort_keys=True, default=str, allow_nan=False)
+    except Exception:
+        # Public gateway output must not expose raw panel values, source paths,
+        # stack traces, or runner errors that may contain data-derived text.
+        print(json.dumps({"error": "request rejected or failed; no result was returned"}))
+        return 2
+    print(output)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -36,6 +36,20 @@ def _sha(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _validate_research_window(config: dict):
+    """Reject invalid or held-out windows before reading a panel artifact."""
+    for key in ("start", "train_end", "test_end", "end"):
+        if key not in config:
+            raise ValueError("missing research window boundary")
+    stamps = [pd.Timestamp(config[key]) for key in ("start", "train_end", "test_end", "end")]
+    if any(t.tzinfo is None for t in stamps):
+        raise ValueError("config times must be timezone-aware")
+    start, train_end, test_end, end = [t.tz_convert("UTC") for t in stamps]
+    if not (pd.Timestamp("2022-01-01", tz="UTC") <= start < train_end < test_end <= end <= pd.Timestamp("2025-01-01", tz="UTC")):
+        raise ValueError("research dates outside development interval")
+    return train_end, test_end
+
+
 def _validate_config(config: dict, panel: MarketPanel):
     required = {"mode", "hypothesis", "symbols", "timeframe", "horizon", "start", "end", "train_end",
                 "test_end", "universe", "features", "n_boot", "block_size"}
@@ -50,12 +64,8 @@ def _validate_config(config: dict, panel: MarketPanel):
         raise ValueError("development family cannot be changed")
     if type(config["horizon"]) is not int or config["horizon"] < 1:
         raise ValueError("invalid horizon")
-    stamps = [pd.Timestamp(config[key]) for key in ("start", "train_end", "test_end", "end")]
-    if any(t.tzinfo is None for t in stamps):
-        raise ValueError("config times must be timezone-aware")
-    start, train_end, test_end, end = [t.tz_convert("UTC") for t in stamps]
-    if not (pd.Timestamp("2022-01-01", tz="UTC") <= start < train_end < test_end <= end <= pd.Timestamp("2025-01-01", tz="UTC")):
-        raise ValueError("research dates outside development interval")
+    train_end, test_end = _validate_research_window(config)
+    start, end = pd.Timestamp(config["start"]).tz_convert("UTC"), pd.Timestamp(config["end"]).tz_convert("UTC")
     times = panel.frame.index.get_level_values("open_time")
     if len(times) == 0 or times.min() < start or times.max() >= end:
         raise ValueError("panel contains out-of-range candles")

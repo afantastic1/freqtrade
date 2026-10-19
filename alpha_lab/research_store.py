@@ -10,6 +10,11 @@ from alpha_lab.experiment_registry import utc_now
 
 
 CANDIDATE_MANIFEST_VERSION = 1
+CROSS_SECTIONAL_VERDICT_POLICY_VERSION = "cs-verdict-gated-v1"
+CROSS_SECTIONAL_SUPPORTED_ENABLED = False
+CROSS_SECTIONAL_DECISION_CONCLUSIONS = frozenset({
+    "INCONCLUSIVE", "REJECTED", "NOT_EVALUABLE",
+})
 
 CANDIDATE_COLUMNS = {
     "hypothesis": "TEXT",
@@ -649,6 +654,15 @@ class ResearchStore:
                 cs_evidence = json.loads(cs_row["payload_json"])
                 if cs_evidence.get("candidate_source_hash") != candidate_source_hash:
                     raise ValueError("candidate source_hash does not match run")
+                if cs_evidence.get("mode") != "cross_sectional":
+                    raise ValueError("cross-sectional evidence mode is missing or invalid")
+                if not CROSS_SECTIONAL_SUPPORTED_ENABLED:
+                    if (not isinstance(conclusion, str)
+                            or conclusion not in CROSS_SECTIONAL_DECISION_CONCLUSIONS):
+                        raise ValueError(
+                            "cross-sectional conclusion must use the closed non-supported vocabulary "
+                            "while the calibration gate is closed"
+                        )
                 conn.execute("""
                     INSERT INTO cs_research_decisions (
                         decision_id, run_id, candidate_source_hash,

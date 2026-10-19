@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from alpha_lab.cross_sectional_runner import run_cross_sectional
+from alpha_lab.cross_sectional_runner import _validate_research_window, run_cross_sectional
 from alpha_lab.data.market_panel import MarketPanel
 
 RESEARCH_ROOT = Path("user_data/research/alpha_lab")
@@ -40,6 +40,7 @@ def main(argv=None):
     if not _inside(args.panel_csv, RESEARCH_ROOT / "panels"):
         parser.error("panel must be within the trusted panels directory")
     config = json.loads(args.config.read_text(encoding="utf-8"))
+    _validate_research_window(config)
     summary = run_cross_sectional(config, load_bounded_panel_csv(args.panel_csv), root=RESEARCH_ROOT)
     print(json.dumps({"run_id": summary["run_id"], "mode": summary["mode"],
                       "config_hash": summary["config_hash"],

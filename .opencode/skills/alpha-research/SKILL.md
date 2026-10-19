@@ -8,7 +8,7 @@ metadata:
 
 # Alpha Research
 
-Complete one preregistered research cycle. Read SQLite history and existing decisions before selecting a hypothesis. Treat 2022–2024 as repeatedly used development data, never fresh out-of-sample evidence. Do not touch 2025+ data, live trading, Freqtrade execution, Alpha Lab source, tests, labels, thresholds, the database file, or historical artifacts.
+Complete one bounded research cycle. Record the hypothesis, direction, target, timeframe, horizon, Universe, date interval, confounders, and rejection criterion before submitting the experiment. Read SQLite history and existing decisions before selecting a hypothesis. Treat 2022–2024 as repeatedly used development data, never fresh out-of-sample evidence. Do not touch 2025+ data, live trading, Freqtrade execution, Alpha Lab source, tests, labels, thresholds, the database file, or historical artifacts.
 
 ## Current execution gate
 
@@ -20,9 +20,9 @@ The v1.1 cross-sectional entry point executes only engine-owned fixed transforms
 
 1. Write `user_data/research/alpha_lab/candidates/current/request.json` with `{"action":"history"}` and invoke `.venv/bin/python -m alpha_lab.research_agent_cli` to inspect prior runs. For one run, set `{"action":"show","run_id":"..."}` and invoke the same exact command. Do not use a deduplicated run to avoid an existing multiple-testing family.
 2. State one falsifiable mechanism, predicted sign, target, timeframe (5m, 15m, 1h, or 4h), horizon, fixed or dynamic Universe, date interval, known confounders, and rejection criterion before running.
-3. For cross-sectional research, write `user_data/research/alpha_lab/candidates/current/config.json`. Select a Maintainer-prepared, bounded CSV under `user_data/research/alpha_lab/panels/`. Use the exact v1.1 config contract in `docs/alpha_lab/research-protocol-v1.1-draft.md`.
+3. For cross-sectional research, write `user_data/research/alpha_lab/candidates/current/config.json`. Select a Maintainer-prepared panel by ID; do not read or grep the panel file. The gateway is the only Agent interface to panel data. Use the exact v1.1 config contract in `docs/alpha_lab/research-protocol-v1.1-draft.md`.
 4. Write `{"action":"cross_sectional_run","panel_id":"<snapshot_stem>"}` to the fixed request file and invoke `.venv/bin/python -m alpha_lab.research_agent_cli`. Do not pass shell arguments, operators, or extra commands.
-5. Inspect the summary and manifest, including Universe membership, valid sections, coverage, CS-IC/RankIC, block bootstrap, HAC, MDE, quantile spread, turnover, cost sensitivity, and baseline comparison. Use `{"action":"family_review"}` with the same gateway for campaign-wide Holm/BH. `NOT_EVALUABLE` and `INCONCLUSIVE` are evidence states, not zero scores. Two-asset ranks are insufficient for this evaluator.
+5. Read run Evidence through `{"action":"show","run_id":"..."}` and a declared campaign through `{"action":"family_review"}`. Do not open `runs/**` artifacts directly. Inspect Universe membership, valid sections, coverage, CS-IC/RankIC, bootstrap, HAC, MDE, quantile spread, turnover, cost sensitivity, and baseline comparison returned by the gateway. `NOT_EVALUABLE` and `INCONCLUSIVE` are evidence states, not zero scores. Two-asset ranks are insufficient for this evaluator.
 6. Write `{"action":"decide","run_id":"...","source_hash":"...","decision":{"supporting_evidence":[],"opposing_evidence":[],"conclusion":"INCONCLUSIVE","next_hypothesis":"...","next_actions":["ARCHIVE"],"agent_identity":"opencode-alpha-research"}}` to the fixed request file and invoke the same exact command. Never insert or update SQLite directly.
 
 ## Interpretation rules
