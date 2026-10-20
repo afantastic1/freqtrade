@@ -12,7 +12,12 @@ import pytest
 from data_engineering.sources.contracts import (
     AvailabilityStatus, DatasetIdentity, DatasetRequest, DownloadStatus,
 )
-from data_engineering.sources.binance_vision import BinanceVisionAdapter
+from data_engineering.sources.binance_vision import (
+    BinanceVisionAdapter,
+    MAX_RESPONSE_BYTES,
+    ResponseTooLargeError,
+    SafeVisionHTTPClient,
+)
 
 
 def _request(asset="BTC", timeframe="5m", start="2025-01-01", end="2025-03-01"):
@@ -98,6 +103,30 @@ def test_discovery_uses_bounded_s3_metadata_and_never_fetches_archive_payload(tm
     assert len(http.calls) == 1
     assert "s3-ap-northeast-1.amazonaws.com" in http.calls[0][0]
     assert all("data.binance.vision" in item.source_locator for item in artifacts)
+
+
+def test_s3_listing_response_size_is_bounded(monkeypatch):
+    class Response:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def geturl(self):
+            return "https://s3-ap-northeast-1.amazonaws.com/data.binance.vision?prefix=x"
+
+        def read(self, limit):
+            return b"x" * limit
+
+    client = SafeVisionHTTPClient(retries=0)
+    monkeypatch.setattr(client.opener, "open", lambda *args, **kwargs: Response())
+    url = "https://s3-ap-northeast-1.amazonaws.com/data.binance.vision?prefix=x"
+    assert MAX_RESPONSE_BYTES == 4 * 1024 * 1024
+    with pytest.raises(ResponseTooLargeError):
+        client.fetch(url, method="GET")
 
 
 def test_download_distinguishes_absent_archive_missing_checksum_and_transport(tmp_path):

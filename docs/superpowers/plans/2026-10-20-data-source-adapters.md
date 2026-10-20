@@ -145,16 +145,16 @@
 - CLI commands: `sources discover`, `sources plan --dry-run`, `sources download`, `sources validate`, `sources publish`, and `sources sync`; all require explicit roots and dataset selectors.
 - Download and publish are local operator commands only; do not register MCP/Agent/web/worker actions.
 
-- [ ] **Step 1: Write failing CLI tests** proving dry-run makes metadata-only calls and writes nothing; commands require explicit selection/roots; unsupported local download fails; stage statuses and resumability are represented; no external agent interface is added.
-- [ ] **Step 2: Run `pytest tests/test_data_engineering_source_cli.py -q` and confirm the commands are absent.**
-- [ ] **Step 3: Implement CLI orchestration** delegating all work to the adapter/pipeline APIs and keeping the legacy CLI intact.
-- [ ] **Step 4: Run CLI, packaging, existing importer, catalog, and Data Engineering test suites; confirm compatibility and governance checks pass.**
-- [ ] **Step 5: If the configured Vision host is available, run one bounded acceptance for an explicitly reviewed crypto monthly archive and record exact URL/checksum/converter/fingerprint/status; otherwise record the exact unavailable condition without substituting synthetic evidence.**
+- [x] **Step 1: Write failing CLI tests** proving dry-run makes metadata-only calls and writes nothing; commands require explicit selection/roots; unsupported local download fails; stage statuses and resumability are represented; no external agent interface is added.
+- [x] **Step 2: Run `pytest tests/test_data_engineering_source_cli.py -q` and confirm the commands are absent.** Initial CLI tests failed on the missing module.
+- [x] **Step 3: Implement CLI orchestration** delegating all work to the adapter/pipeline APIs and keeping the legacy CLI intact.
+- [x] **Step 4: Run CLI, packaging, existing importer, catalog, and Data Engineering test suites; confirm compatibility and governance checks pass.** Final combined suite: 133 passed. Governance verifier passed; the freeze verifier reported existing `.github/CODEOWNERS` and `.github/workflows/alpha-lab-freeze.yml` drift from its frozen manifest.
+- [x] **Step 5: If the configured Vision host is available, run one bounded acceptance for an explicitly reviewed crypto monthly archive and record exact URL/checksum/converter/fingerprint/status; otherwise record the exact unavailable condition without substituting synthetic evidence.** Live BTCUSDT 1h September 2026 acceptance passed; exact evidence is in `docs/alpha_lab/data_catalog_v3_source_adapters_acceptance.md`.
 - [ ] **Step 6: Commit** as `feat(data): expose staged source preparation CLI`.
 
 ### Final verification
 
 - [ ] Run the full Data Engineering and catalog tests plus existing importer regressions.
-- [ ] Run governance/freeze checks, `compileall`, package build/metadata inspection, and `git diff --check`.
-- [ ] Verify no Feather or raw ZIP source changed and no MCP/Agent download or publish operation was exposed.
+- [x] Run governance/freeze checks, `compileall`, package build/metadata inspection, and `git diff --check`. Governance passed; freeze status is documented above.
+- [x] Verify no Feather or raw ZIP source changed and no MCP/Agent download or publish operation was exposed.
 - [ ] Run `superpowers:verification-before-completion` before claiming completion.

@@ -35,6 +35,7 @@ from .vision_archive import (
 
 CRYPTO_ASSETS = frozenset({"BTC", "ETH", "SOL", "BNB", "XRP"})
 MAX_ARCHIVE_BYTES = 256 * 1024 * 1024
+MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 TRANSIENT_HTTP = frozenset({408, 429, 500, 502, 503, 504})
 
 

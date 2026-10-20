@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import sys
 
 from .catalog import export_market, publish, verify
 from .catalog_v3 import get_coverage, list_datasets, validate_dataset
@@ -27,6 +28,11 @@ def _source_roots(values):
 
 
 def main(argv=None) -> int:
+    if argv is None:
+        argv = sys.argv[1:]
+    if argv and argv[0] == "sources":
+        from .sources.cli import main as sources_main
+        return sources_main(argv[1:])
     p = argparse.ArgumentParser(description="Offline-first snapshot data engineering")
     p.add_argument("--root", type=Path, default=DEFAULT_ROOT)
     sub = p.add_subparsers(dest="command", required=True)

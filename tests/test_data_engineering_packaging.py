@@ -54,3 +54,10 @@ def test_packaged_pit_sidecar_schema_is_available_and_versioned():
     assert schema["$defs"]["record"]["properties"]["status"]["enum"] == [
         "VERIFIED", "CONSERVATIVE", "UNVERIFIED", "REJECTED"
     ]
+
+
+def test_source_cli_module_and_pyarrow_are_in_standalone_package():
+    metadata = tomllib.loads((PACKAGE / "pyproject.toml").read_text(encoding="utf-8"))
+    assert "data_engineering.sources" in metadata["tool"]["setuptools"]["packages"]
+    assert "pyarrow>=14" in metadata["project"]["dependencies"]
+    assert (PACKAGE / "sources" / "cli.py").is_file()
