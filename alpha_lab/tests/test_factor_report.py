@@ -107,3 +107,19 @@ def test_no_input_mutation():
     pd.testing.assert_series_equal(
         label, original_label
     )
+def test_strict_numpy_error_policy():
+    factor, label, timestamps = make_inputs()
+
+    with np.errstate(all="raise"):
+        before = np.geterr().copy()
+
+        report = evaluate_factor(
+            factor, label, timestamps
+        )
+
+        assert np.geterr() == before
+
+    deciles = report["deciles"]
+
+    assert len(deciles) == 10
+    assert deciles["n"].sum() == 100

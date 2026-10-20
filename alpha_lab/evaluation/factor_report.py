@@ -126,12 +126,16 @@ def evaluate_factor(
         # 此处用事后年度排名，仅可用于描述性分析。
         ranks = group["factor"].rank(method="first")
 
-        valid.loc[group.index, "quantile"] = pd.qcut(
-            ranks,
-            q=n_quantiles,
-            labels=False,
-        ).to_numpy()
+        # Pandas qcut may trigger benign underflow internally
+        # when adjusting quantile boundaries with np.nextafter.
+        with np.errstate(under="ignore"):
+            quantiles = pd.qcut(
+                ranks,
+                q=n_quantiles,
+                labels=False,
+            )
 
+        valid.loc[group.index, "quantile"] = quantiles.to_numpy()
     grouped = valid.dropna(subset=["quantile"]).copy()
     grouped["quantile"] = grouped["quantile"].astype(int)
 
