@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import timedelta
+import hashlib
+import json
 import re
 from types import MappingProxyType
 from typing import Mapping
@@ -45,12 +47,31 @@ class AvailabilityRuleV1:
         if self.max_age is not None and self.max_age <= timedelta(0):
             raise ValueError("max_age must be positive")
 
+    @property
+    def rule_sha256(self) -> str:
+        raw = {
+            "rule_id": self.rule_id, "version": self.version,
+            "dataset_identity": {
+                "exchange": self.dataset_identity.exchange,
+                "market_type": self.dataset_identity.market_type,
+                "asset": self.dataset_identity.asset,
+                "exchange_symbol": self.dataset_identity.exchange_symbol,
+                "data_kind": self.dataset_identity.data_kind,
+                "timeframe": self.dataset_identity.timeframe,
+            },
+            "mode": self.mode, "event_time_field": self.event_time_field,
+            "fixed_delay_seconds": self.fixed_delay.total_seconds() if self.fixed_delay else None,
+            "max_age_seconds": self.max_age.total_seconds() if self.max_age else None,
+        }
+        return hashlib.sha256(json.dumps(raw, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
 
 @dataclass(frozen=True)
 class AvailabilityEvidenceV1:
     dataset_id: str
     manifest_sha256: str
     rows: pd.DataFrame
+    evidence_sha256: str | None = None
 
     def __post_init__(self) -> None:
         if not _DIGEST.fullmatch(self.manifest_sha256):
@@ -63,6 +84,11 @@ class AvailabilityEvidenceV1:
         rows["available_time"] = _utc_series(rows.available_time, "available_time")
         if rows.available_time.isna().any():
             raise ValueError("evidence availability times cannot be null")
+        if self.evidence_sha256 is None:
+            canonical = rows.assign(available_time=rows.available_time.astype(str)).sort_values("row_key").to_json(orient="records")
+            object.__setattr__(self, "evidence_sha256", hashlib.sha256(canonical.encode()).hexdigest())
+        elif not _DIGEST.fullmatch(self.evidence_sha256):
+            raise ValueError("evidence digest must be SHA-256")
         object.__setattr__(self, "rows", rows)
 
 
@@ -100,6 +126,7 @@ def assign_availability(
     frame["event_time"] = _utc_series(frame[rule.event_time_field], "event_time")
     frame["availability_rule_id"] = rule.rule_id
     frame["availability_rule_version"] = rule.version
+    frame["availability_rule_sha256"] = rule.rule_sha256
     frame["availability_manifest_sha256"] = manifest_sha256
     if rule.mode == "fixed_delay":
         if "close_time" in frame:
@@ -126,6 +153,7 @@ def assign_availability(
             [evidence_rows.loc[index, "available_time"] for index in range(len(frame))], utc=True
         )
         frame["pit_status"] = "EVIDENCED"
+        frame["availability_evidence_sha256"] = evidence.evidence_sha256
     return frame
 
 

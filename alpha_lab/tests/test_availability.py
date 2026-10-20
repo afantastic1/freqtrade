@@ -19,6 +19,7 @@ def test_fixed_delay_ohlcv_uses_close_time_plus_registered_delay():
     got = assign_availability(frame, IDENTITY, "a" * 64, rule, None)
     assert got.available_time.iloc[0] == pd.Timestamp("2025-01-01T00:05:30Z")
     assert got.pit_status.iloc[0] == "ASSUMED"
+    assert got.availability_rule_sha256.iloc[0] == rule.rule_sha256
 
 
 def test_evidence_must_match_pinned_dataset_and_every_row():

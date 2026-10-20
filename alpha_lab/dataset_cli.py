@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import sys
@@ -12,10 +13,13 @@ from alpha_lab_contracts.campaign_policy_v1 import FileCampaignPolicyRegistry
 from alpha_lab_contracts.research_request_v2 import ResearchRequestV2
 from data_engineering.catalog_v3 import list_datasets
 from data_engineering.sources.contracts import DatasetIdentity
-from .data.availability import AvailabilityRuleRegistry, AvailabilityRuleV1
+import pandas as pd
+
+from .data.availability import AvailabilityEvidenceV1, AvailabilityRuleRegistry, AvailabilityRuleV1
 from .data.dataset_builder import DatasetBuilderV2
 from .data.source_resolver import DatasetSourceResolver, _TYPE
 from .data.temporal_plan import DatasetBuildOptionsV1
+from .data.universe import FixedUniverse
 
 
 def _source_roots(values: list[str]) -> dict[str, Path]:
@@ -55,10 +59,13 @@ def _identity_map(request, exchange, catalog_root):
                 exchange_symbol = next(iter(symbols))
             else:
                 exchange_symbol = f"{asset}/{quote}:{quote}" if market_type == "futures" else f"{asset}/{quote}"
+            event_timeframes = {item["timeframe"] for item in matches if item["timeframe"] is not None}
+            if kind != "ohlcv" and len(event_timeframes) > 1:
+                raise ValueError(f"ambiguous event timeframe for {symbol} {data_type}")
             nested[data_type] = {"exchange": exchange, "market_type": market_type,
                                  "asset": asset, "exchange_symbol": exchange_symbol}
             if kind != "ohlcv":
-                nested[data_type]["timeframe"] = "event"
+                nested[data_type]["timeframe"] = (next(iter(event_timeframes), "event") if matches else request.timeframe)
         result[symbol] = nested
     return result
 
@@ -77,6 +84,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     build.add_argument("--exchange", default="binance")
     build.add_argument("--primary-data-type")
     build.add_argument("--availability-delay-seconds", type=float, default=1.0)
+    build.add_argument("--availability-evidence", action="append", default=[], metavar="DATASET_ID=PATH")
+    build.add_argument("--universe", choices=("fixed",), help="explicit fixed request-symbol universe for cross-sectional builds")
     args = parser.parse_args(argv)
     try:
         roots = _source_roots(args.source_root)
@@ -86,13 +95,28 @@ def main(argv: Sequence[str] | None = None) -> int:
         identities = _identity_map(request, args.exchange, args.catalog_root)
         rules = {}
         rule_ids = {}
+        evidence_by_dataset = {}
+        for item in args.availability_evidence:
+            if "=" not in item:
+                raise ValueError("--availability-evidence must use DATASET_ID=PATH")
+            dataset_id, filename = item.split("=", 1)
+            if not dataset_id or dataset_id in evidence_by_dataset:
+                raise ValueError("invalid or duplicate availability evidence mapping")
+            evidence_path = Path(filename)
+            evidence_raw = json.loads(evidence_path.read_text(encoding="utf-8"))
+            if evidence_raw.get("dataset_id") != dataset_id:
+                raise ValueError("availability evidence dataset ID mismatch")
+            evidence_by_dataset[dataset_id] = AvailabilityEvidenceV1(
+                dataset_id, evidence_raw["manifest_sha256"], pd.DataFrame(evidence_raw["rows"]),
+                hashlib.sha256(evidence_path.read_bytes()).hexdigest(),
+            )
         for symbol in request.symbols:
             for data_type in request.data_types:
                 mapped = identities[symbol][data_type]
                 market, kind = _TYPE[data_type]
                 identity = DatasetIdentity(exchange=args.exchange, market_type=market, asset=mapped["asset"],
                                            exchange_symbol=mapped["exchange_symbol"], data_kind=kind,
-                                           timeframe=request.timeframe if kind == "ohlcv" else "event")
+                                           timeframe=request.timeframe if kind == "ohlcv" else mapped["timeframe"])
                 rule_id = f"{symbol}-{data_type}-availability-v1"
                 rule_ids[f"{symbol}:{data_type}"] = rule_id
                 if kind == "ohlcv":
@@ -103,10 +127,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                 rules[rule_id] = rule
         availability_registry = AvailabilityRuleRegistry(rules)
         resolver = DatasetSourceResolver(args.catalog_root, roots, exchange=args.exchange,
-                                         symbol_identities=identities, availability_registry=availability_registry)
+                                         symbol_identities=identities, availability_registry=availability_registry,
+                                         availability_evidence=evidence_by_dataset)
         options = DatasetBuildOptionsV1(args.missing_policy, args.primary_data_type, {}, rule_ids, {})
         builder = DatasetBuilderV2(registry, resolver, availability_registry, args.output_root)
-        result = builder.build(request, options=options)
+        universe = None
+        if request.mode == "cross_sectional":
+            if args.universe != "fixed":
+                raise ValueError("cross-sectional CLI builds require --universe fixed")
+            universe = FixedUniverse(f"request-{request.sha256()[:12]}", request.symbols)
+        result = builder.build(request, options=options, universe=universe)
         print(json.dumps({"manifest": result.manifest, "artifact": {"worker": str(result.artifact.worker_path),
                           "labels": str(result.artifact.labels_path), "report": str(result.artifact.report_path),
                           "manifest_path": str(result.artifact.manifest_path),

@@ -20,7 +20,7 @@ def fake_builder(monkeypatch):
     class Builder:
         def __init__(self, *args):
             pass
-        def build(self, request, *, options):
+        def build(self, request, *, options, universe=None):
             captured["request"] = request
             artifact = SimpleNamespace(worker_path="worker.parquet", labels_path="labels.parquet", report_path="report.json", manifest_path="manifest.json", fingerprints={"worker": "a" * 64})
             return SimpleNamespace(manifest={"request_sha256": request.sha256()}, artifact=artifact)

@@ -17,7 +17,7 @@ def resolver(monkeypatch, candidate_identity=IDENTITY):
     import alpha_lab.data.source_resolver as module
     start = datetime(2025, 1, 1, tzinfo=timezone.utc)
     end = datetime(2025, 1, 2, tzinfo=timezone.utc)
-    record = {"manifest": {"dataset_id": "chosen", **{
+    record = {"manifest": {"dataset_id": "chosen", "partitions": [{"source_root_id": "source", "source_path": "part.feather", "start": "2025-01-01T00:00:00Z", "end": "2025-02-01T00:00:00Z", "source_sha256": "d" * 64, "fingerprint": "e" * 64}], **{
         "exchange": candidate_identity.exchange, "market_type": candidate_identity.market_type,
         "asset": candidate_identity.asset, "exchange_symbol": candidate_identity.exchange_symbol,
         "data_kind": candidate_identity.data_kind, "timeframe": candidate_identity.timeframe,

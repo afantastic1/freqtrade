@@ -11,7 +11,7 @@ import pandas as pd
 from data_engineering.catalog_v3 import list_datasets, read_dataset_snapshot, validate_dataset
 from data_engineering.sources.contracts import DatasetIdentity
 from alpha_lab_contracts.research_request_v2 import ResearchRequestV2
-from .availability import AvailabilityRuleRegistry, assign_availability
+from .availability import AvailabilityEvidenceV1, AvailabilityRuleRegistry, assign_availability
 from .temporal_plan import DatasetBuildOptionsV1, TemporalPlanV1
 
 
@@ -40,12 +40,14 @@ class DatasetSourceResolver:
         self, catalog_root, source_roots: Mapping[str, object], *, exchange: str,
         symbol_identities: Mapping[str, Mapping[str, str]],
         availability_registry: AvailabilityRuleRegistry,
+        availability_evidence: Mapping[str, AvailabilityEvidenceV1] | None = None,
     ):
         self.catalog_root = catalog_root
         self.source_roots = dict(source_roots)
         self.exchange = exchange
         self.symbol_identities = {key: dict(value) for key, value in symbol_identities.items()}
         self.availability_registry = availability_registry
+        self.availability_evidence = dict(availability_evidence or {})
 
     def _expected_identity(self, symbol: str, data_type: str, timeframe: str) -> DatasetIdentity:
         if symbol not in self.symbol_identities or data_type not in _TYPE:
@@ -59,7 +61,7 @@ class DatasetSourceResolver:
         return DatasetIdentity(
             exchange=self.exchange, market_type=market_type, asset=mapped["asset"],
             exchange_symbol=mapped["exchange_symbol"], data_kind=data_kind,
-            timeframe=timeframe if data_kind == "ohlcv" else mapped.get("timeframe", "event"),
+            timeframe=timeframe if data_kind == "ohlcv" else mapped.get("timeframe", timeframe),
         )
 
     def resolve(self, request: ResearchRequestV2, plan: TemporalPlanV1, options: DatasetBuildOptionsV1) -> tuple[ResolvedSourceV1, ...]:
@@ -95,6 +97,14 @@ class DatasetSourceResolver:
                 if rule_id is None:
                     raise ValueError(f"availability rule not configured for {data_type}")
                 rule = self.availability_registry.get(rule_id, dataset_identity=identity)
-                available = assign_availability(snapshot.observations, identity, pin, rule, None)
-                results.append(ResolvedSourceV1(identity, pin, snapshot.observations, available, snapshot.quality))
+                evidence = self.availability_evidence.get(f"{dataset_id}:{pin}", self.availability_evidence.get(dataset_id))
+                available = assign_availability(snapshot.observations, identity, pin, rule, evidence)
+                quality = dict(snapshot.quality)
+                quality["selected_partitions"] = [
+                    {key: part[key] for key in ("source_root_id", "source_path", "start", "end", "source_sha256", "fingerprint") if key in part}
+                    for part in snapshot.manifest["partitions"]
+                    if pd.Timestamp(part["start"]) < pd.Timestamp(plan.label_extension_end)
+                    and pd.Timestamp(part["end"]) > pd.Timestamp(plan.warmup_start)
+                ]
+                results.append(ResolvedSourceV1(identity, pin, snapshot.observations, available, quality))
         return tuple(results)

@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pandas as pd
@@ -45,6 +46,10 @@ def test_builder_ts_constructs_btc_dataset_from_request(tmp_path):
     assert result.artifact is not None
     assert len(result.worker_input.frame) == 4
     assert len(result.evaluator_labels.frame) == 2
+    source = result.manifest["sources"][0]
+    assert source["manifest_sha256"]
+    assert source["availability_rule_sha256"]
+    assert source["quality"]["selected_partitions"]
 
 
 def test_builder_ts_separates_future_labels(tmp_path):
@@ -66,3 +71,25 @@ def test_builder_ts_rejects_label_extension_past_split(tmp_path):
     builder, request, options, _ = setup_build(tmp_path, request_start="2023-12-31T23:50:00Z", request_end="2023-12-31T23:55:00Z")
     with pytest.raises(ValueError, match="label extension exceeds"):
         builder.build(request, options=options)
+
+
+def test_builder_ts_auxiliary_events_join_on_availability_time(tmp_path):
+    builder, request, options, _ = setup_build(tmp_path)
+    request = replace(request, data_types=("futures_ohlcv", "funding_rate"))
+    original = builder.resolver
+    primary = original.resolve(request, __import__("alpha_lab.data.temporal_plan", fromlist=["build_temporal_plan"]).build_temporal_plan(request, builder.policy_registry.get(request.campaign_id, request.policy_version, request.campaign_policy_sha256)), options)[0]
+    event_identity = DatasetIdentity("binance", "futures", "BTC", "BTC/USDT:USDT", "funding_rate", "5m")
+    events = pd.DataFrame({"event_time": pd.to_datetime(["2023-01-01T00:19:00Z"], utc=True), "available_time": pd.to_datetime(["2023-01-01T00:20:01Z"], utc=True), "pit_status": ["EVIDENCED"], "funding_rate": [0.001]})
+    auxiliary = type("Resolved", (), {"identity": event_identity, "manifest_sha256": "c" * 64, "observations": events, "availability": events, "quality": {"status": "AVAILABLE"}})()
+    class Resolver:
+        def _expected_identity(self, *args):
+            return original._expected_identity(*args)
+        def resolve(self, *args):
+            return primary, auxiliary
+    builder.resolver = Resolver()
+    result = builder.build(request, options=options)
+    worker = result.worker_input.frame
+    feature = "futures_funding_rate_funding_rate"
+    study = worker.loc[worker.open_time >= pd.Timestamp(request.start)]
+    assert pd.isna(study.iloc[0][feature])
+    assert study.iloc[1][feature] == 0.001
