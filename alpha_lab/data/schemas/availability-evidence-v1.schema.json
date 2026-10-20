@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://freqtrade.local/schemas/availability-evidence-v1.schema.json",
+  "title": "Alpha Lab Availability Evidence v1",
+  "type": "object",
+  "required": ["protocol_version", "dataset_id", "manifest_sha256", "rows"],
+  "properties": {
+    "protocol_version": {"const": "1.0-availability-evidence"},
+    "dataset_id": {"type": "string", "minLength": 1},
+    "manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "rows": {"type": "array", "items": {"type": "object", "required": ["row_key", "available_time"], "properties": {"row_key": {}, "available_time": {"type": "string", "format": "date-time"}}, "additionalProperties": false}}
+  },
+  "additionalProperties": false
+}

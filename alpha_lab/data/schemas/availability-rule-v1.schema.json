@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://freqtrade.local/schemas/availability-rule-v1.schema.json",
+  "title": "Alpha Lab Availability Rule v1",
+  "type": "object",
+  "required": ["protocol_version", "rule_id", "dataset_identity", "mode", "event_time_field"],
+  "properties": {
+    "protocol_version": {"const": "1.0-availability-rule"},
+    "rule_id": {"type": "string", "minLength": 1},
+    "dataset_identity": {"type": "object"},
+    "mode": {"enum": ["source_evidence", "fixed_delay"]},
+    "event_time_field": {"type": "string", "minLength": 1},
+    "fixed_delay_seconds": {"type": "number", "minimum": 0},
+    "max_age_seconds": {"type": "number", "exclusiveMinimum": 0}
+  },
+  "additionalProperties": false
+}
