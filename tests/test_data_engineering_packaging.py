@@ -15,6 +15,7 @@ def test_data_engineering_has_standalone_distribution_metadata():
     assert metadata["project"]["name"] == "alpha-lab-data-engineering"
     assert metadata["project"]["scripts"]["data-engineering"] == "data_engineering.__main__:main"
     assert "data_engineering.scripts" in metadata["tool"]["setuptools"]["packages"]
+    assert "data_engineering.quality" in metadata["tool"]["setuptools"]["packages"]
     assert "pandas" in " ".join(metadata["project"]["dependencies"])
     assert "freqtrade" not in " ".join(metadata["project"]["dependencies"])
 

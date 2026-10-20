@@ -267,7 +267,7 @@ def test_validate_observations_marks_missing_candle_as_partial():
 def test_validate_observations_rejects_misaligned_or_naive_timestamps(dates, timeframe, code):
     quality = _quality_contracts_module()
     frame = _ohlcv_frame(dates)
-    if code == "NAIVE_TIMESTAMP":
+    if code in {"NAIVE_TIMESTAMP", "NON_UTC_TIMESTAMP"}:
         frame["date"] = pd.to_datetime(dates)
 
     result = quality.validate_observations(
