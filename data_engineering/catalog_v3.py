@@ -110,21 +110,25 @@ def manifest_fingerprint(document: dict[str, Any]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _reject_symlink_components(path: Path, *, description: str) -> None:
-    absolute = Path(os.path.abspath(path))
+def _reject_symlink_components(path: Path, *, description: str) -> Path:
+    absolute = Path(path)
+    if not absolute.is_absolute():
+        absolute = Path.cwd() / absolute
     current = Path(absolute.anchor)
     for part in absolute.parts[1:]:
+        if part == "..":
+            raise ValueError(f"{description} path parent traversal forbidden")
         current = current / part
         if current.is_symlink():
             raise ValueError(f"{description} path symlink forbidden")
+    return absolute
 
 
 def _dataset_dir(root: Path, dataset_id: str) -> Path:
     if not isinstance(dataset_id, str) or not dataset_id or Path(dataset_id).name != dataset_id:
         raise ValueError("invalid dataset ID")
     directory = Path(root) / "catalog-v3" / "datasets" / dataset_id
-    _reject_symlink_components(directory, description="catalog")
-    return directory
+    return _reject_symlink_components(directory, description="catalog")
 
 
 def _version_files(root: Path, dataset_id: str) -> list[Path]:
@@ -232,8 +236,9 @@ def list_datasets(
     timeframe: str | None = None,
 ) -> list[dict[str, Any]]:
     """Return registered manifest versions in stable dataset/version order."""
-    base = Path(root) / "catalog-v3" / "datasets"
-    _reject_symlink_components(base, description="catalog")
+    base = _reject_symlink_components(
+        Path(root) / "catalog-v3" / "datasets", description="catalog"
+    )
     if not base.exists():
         return []
     records = []
@@ -334,25 +339,30 @@ def _validate_dataset_snapshot(
             issue("SOURCE_INVALID", f"partition {index}: {exc}")
 
     source_order_issues: list[dict[str, str]] = []
-    for source_key, (_, source_frame, _) in source_cache.items():
+    for source_key, (_, source_frame, source_hash) in source_cache.items():
         if "date" not in source_frame:
             continue
         source_partitions = [
             part for part in manifest["partitions"]
             if (part["source_root_id"], part["source_path"]) == source_key
         ]
-        if not source_partitions:
+        if not source_partitions or any(
+            part["source_sha256"] != source_hash for part in source_partitions
+        ):
             continue
-        dates = pd.to_datetime(source_frame["date"], utc=True)
-        selected_mask = pd.Series(False, index=source_frame.index)
-        for part in source_partitions:
-            selected_mask |= (dates >= pd.Timestamp(part["start"])) & (dates < pd.Timestamp(part["end"]))
-        selected_source = source_frame.loc[selected_mask]
-        original_quality = validate_observations(
-            selected_source, data_kind=manifest["data_kind"], timeframe=manifest["timeframe"],
-            event_cadence=manifest.get("event_cadence"),
-        )
-        source_order_issues.extend(original_quality["issues"])
+        try:
+            dates = pd.to_datetime(source_frame["date"], utc=True)
+            selected_mask = pd.Series(False, index=source_frame.index)
+            for part in source_partitions:
+                selected_mask |= (dates >= pd.Timestamp(part["start"])) & (dates < pd.Timestamp(part["end"]))
+            selected_source = source_frame.loc[selected_mask]
+            original_quality = validate_observations(
+                selected_source, data_kind=manifest["data_kind"], timeframe=manifest["timeframe"],
+                event_cadence=manifest.get("event_cadence"),
+            )
+            source_order_issues.extend(original_quality["issues"])
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            issue("SOURCE_INVALID", f"source ordering check: {exc}")
 
     if verified_partitions:
         frame = pd.concat([part for _, part in verified_partitions], ignore_index=True)

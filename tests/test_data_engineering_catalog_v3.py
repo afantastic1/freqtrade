@@ -540,6 +540,29 @@ def test_validate_dataset_detects_source_hash_mismatch(tmp_path):
     assert "SOURCE_HASH_MISMATCH" in {issue["code"] for issue in result["issues"]}
 
 
+def test_validate_dataset_returns_invalid_for_malformed_changed_source(tmp_path):
+    catalog = _v3_catalog_module()
+    record, source_root, source = _registered_feather(tmp_path)
+    changed = pd.DataFrame({
+        "date": ["not-a-date"], "open": [100.0], "high": [101.0],
+        "low": [99.0], "close": [100.5], "volume": [2.0],
+    })
+    changed.to_feather(source)
+    result = catalog.validate_dataset(
+        tmp_path / "catalog", record["manifest"]["dataset_id"],
+        source_roots={"binance-futures": source_root},
+    )
+    assert result["status"] == "INVALID"
+    assert result["issues"]
+    coverage = catalog.get_coverage(
+        tmp_path / "catalog", record["manifest"]["dataset_id"],
+        datetime.fromisoformat("2025-01-01T00:00:00+00:00"),
+        datetime.fromisoformat("2025-01-01T00:10:00+00:00"),
+        source_roots={"binance-futures": source_root},
+    )
+    assert coverage["status"] == "INVALID"
+
+
 def test_validate_dataset_detects_partition_fingerprint_mismatch(tmp_path):
     catalog = importlib.import_module("data_engineering.catalog_v3")
     assert hasattr(catalog, "validate_dataset"), "v3 dataset validator must exist"
@@ -632,6 +655,32 @@ def test_validate_dataset_rejects_symlinked_catalog_ancestor(tmp_path):
     )
     result = _v3_catalog_module().validate_dataset(
         configured_catalog, record["manifest"]["dataset_id"],
+        source_roots={"source": source_root},
+    )
+    assert result["status"] == "INVALID"
+    assert result["issues"]
+
+
+def test_validate_dataset_rejects_symlink_parent_traversal(tmp_path):
+    adapter = _freqtrade_feather_module()
+    source_root = tmp_path / "source"
+    source_root.mkdir()
+    source = source_root / "BTC_USDT_USDT-5m-futures.feather"
+    _ohlcv_frame(["2025-01-01T00:00:00Z"]).to_feather(source)
+    external_parent = tmp_path / "external"
+    actual_catalog = external_parent / "catalog"
+    record = adapter.register_feather_file(
+        actual_catalog, source_root_id="source", source_root=source_root,
+        relative_path=Path(source.name), exchange="binance", market_type="futures",
+        asset="BTC", exchange_symbol="BTC/USDT:USDT", data_kind="ohlcv",
+        timeframe="5m", source="freqtrade-local",
+    )
+    (external_parent / "nested").mkdir(parents=True)
+    alias = tmp_path / "alias"
+    alias.symlink_to(external_parent / "nested", target_is_directory=True)
+    traversal_root = alias / ".." / "catalog"
+    result = _v3_catalog_module().validate_dataset(
+        traversal_root, record["manifest"]["dataset_id"],
         source_roots={"source": source_root},
     )
     assert result["status"] == "INVALID"
