@@ -82,6 +82,16 @@ def validate_v3_manifest(document: dict[str, Any]) -> None:
         if previous_end is not None and start < previous_end:
             raise ValueError(f"partition interval {index} overlaps or is out of order")
         _validate_source_path(partition["source_path"], partition_index=index)
+        if partition.get("storage_format", "feather") == "parquet":
+            provenance = partition["provenance"]
+            artifact_start = _parse_utc(
+                provenance["artifact_start"], name=f"partition {index} artifact_start"
+            )
+            artifact_end = _parse_utc(
+                provenance["artifact_end"], name=f"partition {index} artifact_end"
+            )
+            if artifact_start != start or artifact_end != end:
+                raise ValueError(f"partition {index} provenance bounds do not match partition bounds")
         previous_end = end
 
     event_cadence = document.get("event_cadence")
@@ -129,6 +139,26 @@ def _dataset_dir(root: Path, dataset_id: str) -> Path:
         raise ValueError("invalid dataset ID")
     directory = Path(root) / "catalog-v3" / "datasets" / dataset_id
     return _reject_symlink_components(directory, description="catalog")
+
+
+def _safe_partition_file(source_root: Path, source_path: str) -> Path:
+    """Resolve a Feather or Parquet partition below a nonsymlink source root."""
+    _validate_source_path(source_path, partition_index=0)
+    root = _reject_symlink_components(Path(source_root), description="source root")
+    if not root.exists() or not root.is_dir():
+        raise ValueError("configured source root must be an existing directory")
+    resolved_root = root.resolve(strict=True)
+    target = _reject_symlink_components(
+        root.joinpath(*PurePosixPath(source_path).parts), description="source"
+    )
+    resolved = target.resolve(strict=True)
+    try:
+        resolved.relative_to(resolved_root)
+    except ValueError as exc:
+        raise ValueError("source path escapes configured root") from exc
+    if not resolved.is_file():
+        raise ValueError("source path must be a regular file")
+    return resolved
 
 
 def _version_files(root: Path, dataset_id: str) -> list[Path]:
@@ -307,7 +337,7 @@ def _validate_dataset_snapshot(
     from .quality.contracts import validate_observations
 
     verified_partitions: list[tuple[dict[str, Any], pd.DataFrame]] = []
-    source_cache: dict[tuple[str, str], tuple[Path, pd.DataFrame, str]] = {}
+    source_cache: dict[tuple[str, str, str], tuple[Path, pd.DataFrame, str]] = {}
     for index, partition in enumerate(manifest["partitions"]):
         root_id = partition["source_root_id"]
         configured_root = source_roots.get(root_id)
@@ -315,10 +345,20 @@ def _validate_dataset_snapshot(
             issue("SOURCE_ROOT_MISSING", f"no source root configured for {root_id}")
             continue
         try:
-            key = (root_id, partition["source_path"])
+            storage_format = partition.get("storage_format", "feather")
+            if storage_format not in {"feather", "parquet"}:
+                issue("STORAGE_FORMAT_UNSUPPORTED", f"partition {index} has an unsupported storage format")
+                continue
+            key = (root_id, partition["source_path"], storage_format)
             if key not in source_cache:
-                source_path, _ = _safe_source_path(configured_root, Path(partition["source_path"]))
-                source_frame = pd.read_feather(source_path)
+                if storage_format == "feather":
+                    source_path, _ = _safe_source_path(
+                        configured_root, Path(partition["source_path"])
+                    )
+                    source_frame = pd.read_feather(source_path)
+                else:
+                    source_path = _safe_partition_file(configured_root, partition["source_path"])
+                    source_frame = pd.read_parquet(source_path, engine="pyarrow")
                 source_frame = _canonicalize_frame(source_frame, manifest["data_kind"])
                 source_cache[key] = (source_path, source_frame, _source_digest(source_path))
             source_path, frame, source_hash = source_cache[key]
@@ -329,22 +369,41 @@ def _validate_dataset_snapshot(
             start = pd.Timestamp(partition["start"])
             end = pd.Timestamp(partition["end"])
             part = frame.loc[(dates >= start) & (dates < end)].copy()
+            partition_valid = True
             if len(part) != partition["row_count"]:
                 issue("PARTITION_ROW_COUNT_MISMATCH", f"partition {index} row count changed")
+                partition_valid = False
             if _frame_fingerprint(part) != partition["fingerprint"]:
                 issue("PARTITION_FINGERPRINT_MISMATCH", f"partition {index} observations changed")
+                partition_valid = False
             if not part.empty:
+                actual_first = pd.Timestamp(part["date"].iloc[0])
+                actual_last = pd.Timestamp(part["date"].iloc[-1])
+                expected_first = pd.Timestamp(partition["first_observation"])
+                expected_last = pd.Timestamp(partition["last_observation"])
+                if actual_first != expected_first or actual_last != expected_last:
+                    issue(
+                        "PARTITION_OBSERVATION_BOUNDS_MISMATCH",
+                        f"partition {index} observation bounds changed",
+                    )
+                    partition_valid = False
+            if partition_valid and not part.empty:
                 verified_partitions.append((partition, part))
         except (OSError, ValueError, KeyError, TypeError) as exc:
             issue("SOURCE_INVALID", f"partition {index}: {exc}")
 
     source_order_issues: list[dict[str, str]] = []
     for source_key, (_, source_frame, source_hash) in source_cache.items():
+        if source_key[2] != "feather":
+            continue
         if "date" not in source_frame:
             continue
         source_partitions = [
             part for part in manifest["partitions"]
-            if (part["source_root_id"], part["source_path"]) == source_key
+            if (
+                part["source_root_id"], part["source_path"],
+                part.get("storage_format", "feather"),
+            ) == source_key
         ]
         if not source_partitions or any(
             part["source_sha256"] != source_hash for part in source_partitions

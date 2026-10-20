@@ -50,7 +50,7 @@
 - [x] **Step 2: Run `pytest tests/test_data_engineering_sources_contracts.py -q` and confirm the new contract tests fail.** Initial system pytest could not load `xdist`; the approved workspace Python produced the expected missing-module collection failure before implementation.
 - [x] **Step 3: Implement the typed value objects and runtime-checkable protocol** in `data_engineering/sources/contracts.py`; use immutable dataclasses and reject naive/non-UTC bounds.
 - [x] **Step 4: Re-run the focused contract tests and PR-02 identity compatibility tests; confirm they pass.** `--noconftest` run: 10 passed, including the PR-02 settlement-symbol identity test.
-- [ ] **Step 5: Commit** as `feat(data): add source adapter contracts`.
+- [x] **Step 5: Commit** as `feat(data): add source adapter contracts` (`624131792d`).
 
 ### Task 2: Local Freqtrade Feather adapter
 
@@ -106,7 +106,7 @@
 - [x] **Step 2: Run `pytest tests/test_data_engineering_source_pipeline.py -q` and confirm the stage semantics fail.** Missing pipeline import was observed before implementation.
 - [x] **Step 3: Implement per-month planning, source-preserving validation, digest-bound receipts, and journal states `DISCOVERED`, `DOWNLOADED`, `VALIDATED`, `OBJECT_PUBLISHED`, `CATALOG_REGISTERED` plus terminal failures.** An invalid latest catalog revision is returned as `INVALID`; do not fall back silently.
 - [x] **Step 4: Run the focused pipeline tests; confirm dry-run has no payload requests and recovery finishes catalog registration without claiming premature presence.** Pipeline: 15 passed; combined new source and catalog tests: 107 passed.
-- [ ] **Step 5: Commit** as `feat(data): add staged source validation pipeline`.
+- [x] **Step 5: Commit** as `feat(data): add staged source validation pipeline` (`c4355124fd`).
 
 ### Task 5: Immutable Parquet publication and Catalog v3 snapshots
 
@@ -123,11 +123,11 @@
 - Produces `publish(receipt, batch, roots, catalog) -> PublishResult` with content-addressed normalized object path and provenance key.
 - A new manifest revision is a complete snapshot carrying forward verified, non-overlapping partition references.
 
-- [ ] **Step 1: Write failing tests** for deterministic normalized fingerprints, distinct provenance object keys, optional `storage_format="parquet"` compatibility, raw-source provenance, full-snapshot carry-forward, atomic no-overwrite, symlink-safe roots, object-present/catalog-missing recovery, digest recheck, and incompatible partial overlap rejection.
-- [ ] **Step 2: Run the focused catalog and publisher tests and confirm the new Parquet paths fail.**
-- [ ] **Step 3: Implement Parquet write/read/hash validation, additive manifest fields, complete append-only snapshots, and atomic publish with registration recovery.**
-- [ ] **Step 4: Run focused tests and existing catalog v1/v2/v3 tests; confirm old Feather manifests retain their interpretation and Parquet coverage validates.**
-- [ ] **Step 5: Build the standalone data-engineering wheel and confirm metadata includes `pyarrow>=14`.**
+- [x] **Step 1: Write failing tests** for deterministic normalized fingerprints, distinct provenance object keys, optional `storage_format="parquet"` compatibility, raw-source provenance, full-snapshot carry-forward, atomic no-overwrite, symlink-safe roots, object-present/catalog-missing recovery, digest recheck, and incompatible partial overlap rejection.
+- [x] **Step 2: Run the focused catalog and publisher tests and confirm the new Parquet paths fail.** Initial Parquet path tests failed as expected; an observation-bound regression also reproduced AVAILABLE for mismatched bounds.
+- [x] **Step 3: Implement Parquet write/read/hash validation, additive manifest fields, complete append-only snapshots, and atomic publish with registration recovery.**
+- [x] **Step 4: Run focused tests and existing catalog v1/v2/v3 tests; confirm old Feather manifests retain their interpretation and Parquet coverage validates.** Combined run: 123 passed.
+- [x] **Step 5: Build the standalone data-engineering wheel and confirm metadata includes `pyarrow>=14`.** Wheel built and metadata inspected under `/tmp/alpha-lab-pr03-wheel`.
 - [ ] **Step 6: Commit** as `feat(data): publish immutable provenance-bound Parquet`.
 
 ### Task 6: CLI, docs, and acceptance

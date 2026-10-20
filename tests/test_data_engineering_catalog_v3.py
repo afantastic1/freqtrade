@@ -924,6 +924,107 @@ def test_v3_schema_rejects_missing_dataset_identity():
     assert list(validator.iter_errors(missing_asset))
 
 
+def test_v3_manifest_accepts_additive_parquet_storage_and_provenance(tmp_path):
+    module = _v3_catalog_module()
+    manifest = _v3_manifest()
+    partition = manifest["partitions"][0]
+    partition.update({
+        "storage_format": "parquet",
+        "provenance": {
+            "adapter": "freqtrade-feather",
+            "converter_version": "parquet-v1",
+            "schema_version": "v1",
+            "raw_source_sha256": "c" * 64,
+            "source_locator": "binance-data:futures/BTC.feather",
+            "artifact_start": partition["start"],
+            "artifact_end": partition["end"],
+        },
+    })
+    module.validate_v3_manifest(manifest)
+    record = module.register_dataset(tmp_path / "catalog", manifest)
+    assert record["manifest"]["partitions"][0]["storage_format"] == "parquet"
+
+
+def test_v3_schema_requires_provenance_for_parquet_partitions():
+    validator = _v3_validator()
+    manifest = _v3_manifest()
+    manifest["partitions"][0]["storage_format"] = "parquet"
+    assert list(validator.iter_errors(manifest))
+
+
+def test_v3_catalog_reads_verified_parquet_and_detects_byte_tampering(tmp_path):
+    module = _v3_catalog_module()
+    data_root = tmp_path / "normalized"
+    data_root.mkdir()
+    path = data_root / "BTC.parquet"
+    frame = _ohlcv_frame(["2025-01-01T00:00:00Z"])
+    frame.to_parquet(path, index=False)
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    manifest = _v3_manifest()
+    partition = manifest["partitions"][0]
+    partition.update({
+        "source_root_id": "normalized",
+        "source_path": "BTC.parquet",
+        "row_count": len(frame),
+        "last_observation": "2025-01-01T00:00:00Z",
+        "source_sha256": digest,
+        "fingerprint": _freqtrade_feather_module()._frame_fingerprint(frame),
+        "storage_format": "parquet",
+        "provenance": {
+            "adapter": "freqtrade-feather",
+            "converter_version": "parquet-v1",
+            "schema_version": "v1",
+            "raw_source_sha256": "c" * 64,
+            "source_locator": "binance-data:futures/BTC.feather",
+            "artifact_start": partition["start"],
+            "artifact_end": partition["end"],
+        },
+    })
+    module.register_dataset(tmp_path / "catalog", manifest)
+    roots = {"normalized": data_root}
+    result = module.validate_dataset(
+        tmp_path / "catalog", manifest["dataset_id"], source_roots=roots
+    )
+    assert result["status"] == "AVAILABLE"
+    path.write_bytes(path.read_bytes() + b"tampered")
+    result = module.validate_dataset(
+        tmp_path / "catalog", manifest["dataset_id"], source_roots=roots
+    )
+    assert result["status"] == "INVALID"
+
+
+def test_v3_catalog_rejects_parquet_observation_bounds_mismatch(tmp_path):
+    module = _v3_catalog_module()
+    data_root = tmp_path / "normalized"
+    data_root.mkdir()
+    path = data_root / "BTC.parquet"
+    frame = _ohlcv_frame(["2025-01-01T00:00:00Z"])
+    frame.to_parquet(path, index=False)
+    manifest = _v3_manifest()
+    partition = manifest["partitions"][0]
+    partition.update({
+        "source_root_id": "normalized", "source_path": "BTC.parquet",
+        "first_observation": "2025-01-01T00:00:00Z",
+        "last_observation": "2025-01-02T00:00:00Z",
+        "row_count": 1,
+        "source_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "fingerprint": _freqtrade_feather_module()._frame_fingerprint(frame),
+        "storage_format": "parquet",
+        "provenance": {
+            "adapter": "freqtrade-feather", "converter_version": "parquet-v1",
+            "schema_version": "v1", "raw_source_sha256": "c" * 64,
+            "source_locator": "binance-data:futures/BTC.feather",
+            "artifact_start": partition["start"], "artifact_end": partition["end"],
+        },
+    })
+    module.register_dataset(tmp_path / "catalog", manifest)
+    result = module.validate_dataset(
+        tmp_path / "catalog", manifest["dataset_id"], source_roots={"normalized": data_root}
+    )
+    assert result["status"] == "INVALID"
+    assert any(item["code"] == "PARTITION_OBSERVATION_BOUNDS_MISMATCH" for item in result["issues"])
+
+
 def test_v3_schema_rejects_incomplete_partition_integrity_record():
     validator = _v3_validator()
     bad_partition = _v3_manifest()

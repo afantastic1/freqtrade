@@ -92,8 +92,34 @@
         "row_count": {"type": "integer", "minimum": 1},
         "source_sha256": {"$ref": "#/$defs/sha256"},
         "fingerprint": {"$ref": "#/$defs/sha256"},
+        "storage_format": {"enum": ["feather", "parquet"]},
+        "provenance": {"$ref": "#/$defs/provenance"},
         "quality_status": {"enum": ["AVAILABLE", "PARTIAL", "MISSING", "INVALID"]},
         "summary": {"type": "object"}
+      },
+      "allOf": [
+        {
+          "if": {"required": ["storage_format"], "properties": {"storage_format": {"const": "parquet"}}},
+          "then": {"required": ["provenance"]}
+        }
+      ],
+      "additionalProperties": false
+    },
+    "provenance": {
+      "type": "object",
+      "required": [
+        "adapter", "converter_version", "schema_version", "raw_source_sha256",
+        "source_locator", "artifact_start", "artifact_end"
+      ],
+      "properties": {
+        "adapter": {"type": "string", "minLength": 1},
+        "converter_version": {"type": "string", "minLength": 1},
+        "schema_version": {"type": "string", "minLength": 1},
+        "raw_source_sha256": {"$ref": "#/$defs/sha256"},
+        "source_locator": {"type": "string", "minLength": 1},
+        "artifact_start": {"type": "string", "format": "date-time"},
+        "artifact_end": {"type": "string", "format": "date-time"},
+        "retrieved_at_utc": {"type": "string", "format": "date-time"}
       },
       "additionalProperties": false
     },

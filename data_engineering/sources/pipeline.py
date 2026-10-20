@@ -205,23 +205,14 @@ def _actual_source_sha(batch: ObservationBatch) -> str:
     return digest.hexdigest()
 
 
-def _parquet_bytes(frame: pd.DataFrame) -> bytes:
+def encode_parquet(frame: pd.DataFrame) -> bytes:
     output = BytesIO()
     frame.to_parquet(output, engine="pyarrow", index=False, compression="snappy", version="2.6")
     return output.getvalue()
 
 
-def validate(
-    batch: ObservationBatch,
-    *,
-    converter_version: str,
-    policy: ValidationPolicy | None = None,
-) -> ValidationReceipt:
-    """Validate ordered source observations and bind their Parquet bytes by digest."""
-    policy = policy or ValidationPolicy()
-    source_digest = _actual_source_sha(batch)
-    if source_digest != batch.source_sha256:
-        raise SourceValidationError(("SOURCE_CHANGED",), {"source_sha256": source_digest})
+def normalized_observations(batch: ObservationBatch) -> pd.DataFrame:
+    """Select canonical columns and normalize UTC timestamp representation."""
     if not isinstance(batch.observations, pd.DataFrame):
         raise SourceValidationError(("UNSUPPORTED_OBSERVATIONS",), {})
     fields = _canonical_columns(batch.identity.data_kind, batch.observations.columns)
@@ -236,12 +227,29 @@ def validate(
     offsets = timestamps.map(lambda item: item.utcoffset().total_seconds())
     if (offsets != 0).any():
         raise SourceValidationError(("NON_UTC_TIMESTAMP",), {})
-    timestamps = timestamps.dt.tz_convert("UTC").astype("datetime64[ns, UTC]")
-    frame[timestamp_field] = timestamps
+    frame[timestamp_field] = timestamps.dt.tz_convert("UTC").astype("datetime64[ns, UTC]")
     if frame.empty:
         raise SourceValidationError(("EMPTY_SOURCE",), {})
-    if ((timestamps < batch.artifact.start) | (timestamps >= batch.artifact.end)).any():
+    if ((frame[timestamp_field] < batch.artifact.start) |
+            (frame[timestamp_field] >= batch.artifact.end)).any():
         raise SourceValidationError(("OBSERVATION_OUT_OF_BOUNDS",), {})
+    return frame
+
+
+def validate(
+    batch: ObservationBatch,
+    *,
+    converter_version: str,
+    policy: ValidationPolicy | None = None,
+) -> ValidationReceipt:
+    """Validate ordered source observations and bind their Parquet bytes by digest."""
+    policy = policy or ValidationPolicy()
+    source_digest = _actual_source_sha(batch)
+    if source_digest != batch.source_sha256:
+        raise SourceValidationError(("SOURCE_CHANGED",), {"source_sha256": source_digest})
+    frame = normalized_observations(batch)
+    timestamp_field = DATA_KIND_CONTRACTS[batch.identity.data_kind]["timestamp_field"]
+    timestamps = frame[timestamp_field]
     quality = validate_observations(
         frame,
         data_kind=batch.identity.data_kind,
@@ -273,7 +281,7 @@ def validate(
         raise SourceValidationError(tuple(dict.fromkeys(issue_codes)), quality)
     if status == "PARTIAL" and not policy.allow_partial:
         raise SourceValidationError(("INCOMPLETE_SOURCE_COVERAGE",), quality)
-    payload = _parquet_bytes(frame)
+    payload = encode_parquet(frame)
     normalized_digest = sha256(payload).hexdigest()
     content_fingerprint = _frame_fingerprint(frame)
     receipt_material = {
