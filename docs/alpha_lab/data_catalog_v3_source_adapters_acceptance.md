@@ -56,7 +56,7 @@ python -m data_engineering sources publish \
 
 ## Binance Vision workflow
 
-Vision commands require `--raw-root` for download and sync. `discover` and `plan` perform bounded metadata discovery only. `download` fetches checksum metadata before archive bytes; `sync` downloads, validates, and publishes in one local operator invocation. Provide the same dataset selection and bounds shown above, with `--adapter vision`, `--raw-root user_data/data_engineering/raw/binance-vision`, and `--normalized-root user_data/data_engineering/normalized` for planning and publication.
+Vision `discover` and `plan` perform bounded metadata discovery only and do not require a cache root. `download`, `validate`, `publish`, and `sync` require `--raw-root` so downloaded source bytes can be read and verified. `download` fetches checksum metadata before archive bytes; `sync` downloads, validates, and publishes in one local operator invocation. Provide the same dataset selection and bounds shown above, with `--adapter vision`, `--raw-root user_data/data_engineering/raw/binance-vision` for payload stages, and `--normalized-root user_data/data_engineering/normalized` for planning and publication.
 
 ## Acceptance status
 

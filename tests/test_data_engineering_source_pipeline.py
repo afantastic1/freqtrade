@@ -267,3 +267,25 @@ def test_journal_recovers_object_without_catalog_registration(tmp_path):
     assert journal.read(key)["status"] == "CATALOG_REGISTERED"
     with pytest.raises(ValueError, match="transition"):
         journal.transition(key, JournalState.DOWNLOADED, request_id="request", dataset_id="dataset")
+
+
+def test_journal_requires_explicit_retry_and_preserves_failure_history(tmp_path):
+    journal = JournalStore(tmp_path / "journal")
+    key = "dataset-id/2025-01"
+    journal.transition(key, JournalState.DISCOVERED, request_id="request", dataset_id="dataset")
+    failed = journal.transition(
+        key, JournalState.PUBLISH_FAILED, request_id="request", dataset_id="dataset",
+        details={"detail": "temporary catalog write failure"},
+    )
+    with pytest.raises(ValueError, match="explicit retry"):
+        journal.transition(key, JournalState.DISCOVERED, request_id="request", dataset_id="dataset")
+
+    retried = journal.transition(
+        key, JournalState.DISCOVERED, request_id="request", dataset_id="dataset",
+        details={"retry_of": failed["status"]}, retry=True,
+    )
+    assert retried["status"] == "DISCOVERED"
+    assert retried["failure_history"] == [{
+        "status": "PUBLISH_FAILED", "updated_at_utc": failed["updated_at_utc"],
+        "details": {"detail": "temporary catalog write failure"},
+    }]

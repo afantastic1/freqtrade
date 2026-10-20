@@ -148,9 +148,9 @@
 - [x] **Step 1: Write failing CLI tests** proving dry-run makes metadata-only calls and writes nothing; commands require explicit selection/roots; unsupported local download fails; stage statuses and resumability are represented; no external agent interface is added.
 - [x] **Step 2: Run `pytest tests/test_data_engineering_source_cli.py -q` and confirm the commands are absent.** Initial CLI tests failed on the missing module.
 - [x] **Step 3: Implement CLI orchestration** delegating all work to the adapter/pipeline APIs and keeping the legacy CLI intact.
-- [x] **Step 4: Run CLI, packaging, existing importer, catalog, and Data Engineering test suites; confirm compatibility and governance checks pass.** Final combined suite: 133 passed. Governance verifier passed; the freeze verifier reported existing `.github/CODEOWNERS` and `.github/workflows/alpha-lab-freeze.yml` drift from its frozen manifest.
+- [x] **Step 4: Run CLI, packaging, existing importer, catalog, and Data Engineering test suites; record compatibility and governance outcomes.** Combined suite: 138 passed after review fixes. Governance verifier passed; the freeze verifier reported existing `.github/CODEOWNERS` and `.github/workflows/alpha-lab-freeze.yml` drift from its frozen manifest.
 - [x] **Step 5: If the configured Vision host is available, run one bounded acceptance for an explicitly reviewed crypto monthly archive and record exact URL/checksum/converter/fingerprint/status; otherwise record the exact unavailable condition without substituting synthetic evidence.** Live BTCUSDT 1h September 2026 acceptance passed; exact evidence is in `docs/alpha_lab/data_catalog_v3_source_adapters_acceptance.md`.
-- [ ] **Step 6: Commit** as `feat(data): expose staged source preparation CLI`.
+- [x] **Step 6: Commit** as `feat(data): expose staged source preparation CLI` (`fc9d6fed82`); follow-up review fixes are committed separately.
 
 ### Final verification
 

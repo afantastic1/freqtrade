@@ -41,6 +41,11 @@ _FAILURES = {
 }
 
 
+def is_failure_state(state: JournalState | str) -> bool:
+    """Return whether a recorded state is a retryable terminal failure."""
+    return JournalState(state) in _FAILURES
+
+
 class JournalStore:
     """Persist one latest stage record per stable request/artifact key."""
 
@@ -74,20 +79,28 @@ class JournalStore:
         request_id: str,
         dataset_id: str,
         details: Mapping[str, Any] | None = None,
+        retry: bool = False,
     ) -> dict[str, Any]:
         state = JournalState(state)
         path = self._path(artifact_key)
         current = self.read(artifact_key)
+        failure_history = list(current.get("failure_history", [])) if current else []
         if current:
             if (current["request_id"], current["dataset_id"]) != (request_id, dataset_id):
                 raise ValueError("journal request or dataset identity cannot change")
             previous = JournalState(current["status"])
             if previous in _FAILURES and state is not previous:
-                raise ValueError("terminal journal failure cannot transition")
+                if not retry:
+                    raise ValueError("terminal journal failure requires an explicit retry")
+                failure_history.append({
+                    "status": previous.value,
+                    "updated_at_utc": current["updated_at_utc"],
+                    "details": current.get("details", {}),
+                })
+            elif retry:
+                raise ValueError("retry is only valid after a terminal journal failure")
             if state not in _FAILURES and _ORDER.get(state, -1) < _ORDER.get(previous, -1):
                 raise ValueError("journal stage transition cannot move backward")
-            if state not in _FAILURES and previous in _FAILURES:
-                raise ValueError("terminal journal failure cannot transition")
         record = {
             "artifact_key_sha256": hashlib.sha256(artifact_key.encode()).hexdigest(),
             "request_id": request_id,
@@ -96,6 +109,8 @@ class JournalStore:
             "updated_at_utc": datetime.now(timezone.utc).isoformat(),
             "details": dict(details or {}),
         }
+        if failure_history:
+            record["failure_history"] = failure_history
         path.parent.mkdir(parents=True, exist_ok=True)
         _reject_symlink_components(path, description="source journal")
         fd, temp_name = tempfile.mkstemp(prefix=".staging-", dir=path.parent)

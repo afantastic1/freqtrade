@@ -86,6 +86,26 @@ def test_crypto_allowlist_is_separate_from_tradfi_and_1m_is_opt_in(tmp_path):
         )
 
 
+def test_download_and_read_revalidate_full_artifact_identity_and_1m_opt_in(tmp_path):
+    ordinary = BinanceVisionAdapter(FakeHTTP({}), tmp_path)
+    artifact = ordinary.discover(_request())[0]
+    wrong_exchange = replace(
+        artifact, identity=replace(artifact.identity, exchange="other-exchange")
+    )
+    wrong_kind = replace(
+        artifact, identity=replace(artifact.identity, data_kind="funding_rate")
+    )
+    for forged in (wrong_exchange, wrong_kind):
+        with pytest.raises(ValueError, match="supports Binance"):
+            ordinary._validate_artifact_url(forged)
+
+    opted_in = BinanceVisionAdapter(FakeHTTP({}), tmp_path, allow_1m=True)
+    one_minute = opted_in.discover(_request(timeframe="1m"))[0]
+    without_opt_in = BinanceVisionAdapter(FakeHTTP({}), tmp_path, allow_1m=False)
+    with pytest.raises(ValueError, match="opt-in"):
+        without_opt_in._validate_artifact_url(one_minute)
+
+
 def test_discovery_uses_bounded_s3_metadata_and_never_fetches_archive_payload(tmp_path):
     prefix = "data/futures/um/monthly/klines/BTCUSDT/5m/"
     listing = _listing([prefix + "BTCUSDT-5m-2025-01.zip"])

@@ -11,11 +11,11 @@ from typing import Any
 
 from .binance_vision import BinanceVisionAdapter, SafeVisionHTTPClient
 from .contracts import (
-    AdapterCapability, DatasetIdentity, DatasetRequest, SourceArtifact,
+    AdapterCapability, DatasetIdentity, DatasetRequest, DownloadStatus, SourceArtifact,
     UnsupportedCapabilityError, ValidationReceipt, download_artifact,
 )
 from .freqtrade import FreqtradeFeatherAdapter
-from .journal import JournalState, JournalStore
+from .journal import JournalState, JournalStore, is_failure_state
 from .parquet import publish as publish_parquet
 from .pipeline import (
     CatalogV3View, SourceValidationError, ValidationPolicy, plan, validate,
@@ -98,10 +98,9 @@ def _build_adapter(args: argparse.Namespace, roots: dict[str, Path]):
             roots, exchange=args.exchange, market_type=args.market_type,
             event_cadence=args.event_cadence,
         )
-    if args.raw_root is None:
-        raise ValueError("Vision adapter requires --raw-root")
+    raw_root = args.raw_root or Path(".")
     return BinanceVisionAdapter(
-        SafeVisionHTTPClient(), args.raw_root, allow_1m=args.allow_1m,
+        SafeVisionHTTPClient(), raw_root, allow_1m=args.allow_1m,
     )
 
 
@@ -156,6 +155,16 @@ def _artifact_for_read(adapter, artifact: SourceArtifact, journal: JournalStore)
     return artifact
 
 
+def _download_journal_state(status: DownloadStatus | str) -> JournalState:
+    return {
+        DownloadStatus.DOWNLOADED: JournalState.DOWNLOADED,
+        DownloadStatus.ALREADY_CACHED: JournalState.DOWNLOADED,
+        DownloadStatus.UNAVAILABLE: JournalState.UNAVAILABLE,
+        DownloadStatus.DOWNLOAD_FAILED: JournalState.DOWNLOAD_FAILED,
+        DownloadStatus.CHECKSUM_FAILED: JournalState.CHECKSUM_FAILED,
+    }[DownloadStatus(status)]
+
+
 def _process_stage(args: argparse.Namespace, artifacts, adapter, roots, journal) -> list[dict[str, Any]]:
     results = []
     request_id = args.request_id
@@ -174,6 +183,14 @@ def _process_stage(args: argparse.Namespace, artifacts, adapter, roots, journal)
         }:
             results.append({"month": artifact.start.strftime("%Y-%m"), "status": current["status"]})
             continue
+        if current and is_failure_state(current["status"]):
+            retry_details = dict(current.get("details", {}))
+            retry_details.update({"source_locator": artifact.source_locator,
+                                  "retry_of": current["status"]})
+            current = journal.transition(
+                key, JournalState.DISCOVERED, request_id=request_id, dataset_id=dataset_id,
+                details=retry_details, retry=True,
+            )
         if current is None:
             current = journal.transition(
                 key, JournalState.DISCOVERED, request_id=request_id, dataset_id=dataset_id,
@@ -181,13 +198,7 @@ def _process_stage(args: argparse.Namespace, artifacts, adapter, roots, journal)
             )
         if args.command == "download":
             result = download_artifact(adapter, artifact, (args.raw_root or Path(".")))
-            state = {
-                "DOWNLOADED": JournalState.DOWNLOADED,
-                "ALREADY_CACHED": JournalState.DOWNLOADED,
-                "UNAVAILABLE": JournalState.UNAVAILABLE,
-                "DOWNLOAD_FAILED": JournalState.DOWNLOAD_FAILED,
-                "CHECKSUM_FAILED": JournalState.CHECKSUM_FAILED,
-            }[result.status.value]
+            state = _download_journal_state(result.status)
             journal.transition(key, state, request_id=request_id, dataset_id=dataset_id,
                                details={"local_path": str(result.local_path) if result.local_path else None,
                                         "issue_code": result.issue_code, "detail": result.detail})
@@ -237,7 +248,10 @@ def _process_stage(args: argparse.Namespace, artifacts, adapter, roots, journal)
                 )
             except Exception as exc:
                 journal.transition(key, JournalState.PUBLISH_FAILED, request_id=request_id,
-                                   dataset_id=dataset_id, details={"detail": str(exc)})
+                                   dataset_id=dataset_id,
+                                   details={"detail": str(exc),
+                                            "receipt": current["details"]["receipt"],
+                                            "local_path": str(artifact.local_path) if artifact.local_path else None})
                 results.append({"month": artifact.start.strftime("%Y-%m"),
                                 "status": JournalState.PUBLISH_FAILED.value, "detail": str(exc)})
                 continue
@@ -254,7 +268,7 @@ def _process_stage(args: argparse.Namespace, artifacts, adapter, roots, journal)
             if adapter.capabilities and "download" in {str(item) for item in adapter.capabilities}:
                 downloaded = download_artifact(adapter, artifact, args.raw_root)
                 if downloaded.local_path is None:
-                    state = JournalState.UNAVAILABLE if downloaded.status.value == "UNAVAILABLE" else JournalState.DOWNLOAD_FAILED
+                    state = _download_journal_state(downloaded.status)
                     journal.transition(key, state, request_id=request_id, dataset_id=dataset_id,
                                        details={"issue_code": downloaded.issue_code})
                     results.append({"month": artifact.start.strftime("%Y-%m"), "status": state.value})
@@ -312,7 +326,7 @@ def main(argv: list[str] | None = None) -> int:
         raise ValueError("plan requires --normalized-root to verify existing catalog coverage")
     if args.command in {"publish", "sync"} and args.normalized_root is None:
         raise ValueError(f"{args.command} requires --normalized-root")
-    if args.adapter == "vision" and args.command in {"download", "sync"} and args.raw_root is None:
+    if args.adapter == "vision" and args.command in {"download", "validate", "publish", "sync"} and args.raw_root is None:
         raise ValueError(f"Vision {args.command} requires --raw-root")
     adapter = _build_adapter(args, roots)
     if args.command == "download" and AdapterCapability.DOWNLOAD not in adapter.capabilities:

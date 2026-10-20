@@ -1,8 +1,8 @@
 # Data Source Adapters and Incremental Preparation Design
 
-**Status:** Draft for review  
-**Roadmap item:** PR-03, Data source adapter and incremental preparation  
-**Depends on:** PR-01 ResearchRequest v2 and CampaignPolicy v1; PR-02 Data Catalog v3  
+**Status:** Draft for review
+**Roadmap item:** PR-03, Data source adapter and incremental preparation
+**Depends on:** PR-01 ResearchRequest v2 and CampaignPolicy v1; PR-02 Data Catalog v3
 **Date:** 2026-10-20
 
 ## Intent

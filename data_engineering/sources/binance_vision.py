@@ -156,8 +156,7 @@ class BinanceVisionAdapter:
             raise ValueError(f"asset is outside reviewed crypto allowlist: {asset}")
         return f"{asset}USDT"
 
-    def _validate_request(self, request: DatasetRequest) -> tuple[str, list[str]]:
-        identity = request.identity
+    def _validate_identity(self, identity) -> str:
         if identity.exchange != "binance" or identity.market_type != "futures" or identity.data_kind != "ohlcv":
             raise ValueError("Vision adapter supports Binance USD-M Futures OHLCV only")
         symbol = self.crypto_symbol(identity.asset)
@@ -169,6 +168,11 @@ class BinanceVisionAdapter:
             raise ValueError("1m Vision discovery requires explicit opt-in")
         if identity.timeframe == "1m" and symbol not in {"BTCUSDT", "ETHUSDT"}:
             raise ValueError("1m Vision experiment is limited to BTCUSDT or ETHUSDT")
+        return symbol
+
+    def _validate_request(self, request: DatasetRequest) -> tuple[str, list[str]]:
+        identity = request.identity
+        symbol = self._validate_identity(identity)
         cursor = request.start.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         end = request.end
         months = []
@@ -215,7 +219,7 @@ class BinanceVisionAdapter:
         return result
 
     def _validate_artifact_url(self, artifact: SourceArtifact) -> tuple[str, str, str]:
-        symbol = self.crypto_symbol(artifact.identity.asset)
+        symbol = self._validate_identity(artifact.identity)
         month = artifact.start.strftime("%Y-%m")
         expected_url, name = archive_url(symbol, artifact.identity.timeframe, month)
         if artifact.source_locator != expected_url or artifact.source_format != "vision-monthly-zip-csv":
