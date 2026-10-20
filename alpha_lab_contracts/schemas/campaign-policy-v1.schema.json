@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/alpha-lab/campaign-policy-v1.schema.json",
+  "title": "Alpha Lab CampaignPolicy v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocol_version", "campaign_id", "policy_version", "policy_sha256", "symbols", "timeframes", "modes", "data_types", "splits", "parameter_bounds"],
+  "properties": {
+    "protocol_version": {"const": "1.0-campaign-policy"},
+    "campaign_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"},
+    "policy_version": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+    "policy_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "symbols": {"$ref": "#/$defs/nonemptyStrings"},
+    "timeframes": {"$ref": "#/$defs/nonemptyStrings"},
+    "modes": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["time_series", "cross_sectional"]}},
+    "data_types": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["futures_ohlcv", "spot_ohlcv", "funding_rate", "open_interest"]}},
+    "splits": {
+      "type": "object", "additionalProperties": false,
+      "required": ["discovery", "validation", "holdout"],
+      "properties": {"discovery": {"$ref": "#/$defs/window"}, "validation": {"$ref": "#/$defs/window"}, "holdout": {"$ref": "#/$defs/window"}}
+    },
+    "parameter_bounds": {
+      "type": "object", "additionalProperties": false,
+      "required": ["lookback_bars", "label_horizon_bars", "embargo_bars"],
+      "properties": {"lookback_bars": {"$ref": "#/$defs/positiveBounds"}, "label_horizon_bars": {"$ref": "#/$defs/positiveBounds"}, "embargo_bars": {"$ref": "#/$defs/nonnegativeBounds"}}
+    }
+  },
+  "$defs": {
+    "nonemptyStrings": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "timestamp": {"type": "string", "format": "date-time", "pattern": "(Z|[+-][0-9]{2}:[0-9]{2})$"},
+    "window": {"type": "object", "additionalProperties": false, "required": ["start", "end"], "properties": {"start": {"$ref": "#/$defs/timestamp"}, "end": {"$ref": "#/$defs/timestamp"}}, "description": "Semantic validation enforces start < end and ordered non-overlapping split windows."},
+    "positiveBounds": {"type": "object", "additionalProperties": false, "required": ["min", "max"], "properties": {"min": {"type": "integer", "minimum": 1}, "max": {"type": "integer", "minimum": 1}}, "description": "Semantic validation enforces min <= max."},
+    "nonnegativeBounds": {"type": "object", "additionalProperties": false, "required": ["min", "max"], "properties": {"min": {"type": "integer", "minimum": 0}, "max": {"type": "integer", "minimum": 0}}, "description": "Semantic validation enforces min <= max."}
+  }
+}
