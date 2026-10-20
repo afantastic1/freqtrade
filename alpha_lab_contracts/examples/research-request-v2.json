@@ -1,0 +1,21 @@
+{
+  "protocol_version": "2.0-research-request",
+  "request_id": "example-request-001",
+  "campaign_id": "example_campaign",
+  "policy_version": "1",
+  "campaign_policy_sha256": "041efb79ddf9b88a71ff071cbfb52f833420658ff888cf6b6d87bb5f0a7ef209",
+  "start": "2025-06-01T00:00:00Z",
+  "end": "2025-06-02T00:00:00Z",
+  "symbols": [
+    "BTCUSDT"
+  ],
+  "timeframe": "5m",
+  "mode": "time_series",
+  "data_types": [
+    "futures_ohlcv"
+  ],
+  "split": "holdout",
+  "lookback_bars": 20,
+  "label_horizon_bars": 3,
+  "embargo_bars": 1
+}

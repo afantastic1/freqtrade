@@ -9,6 +9,7 @@ on:
       - "my_dev"
     paths:
       - "alpha_lab/**"
+      - "alpha_lab_contracts/**"
       - "alpha_lab_service/**"
       - "containers/alpha-lab-factor-worker/**"
       - "scripts/alpha_lab_admission_gate.py"
@@ -30,6 +31,7 @@ on:
   pull_request:
     paths:
       - "alpha_lab/**"
+      - "alpha_lab_contracts/**"
       - "alpha_lab_service/**"
       - "containers/alpha-lab-factor-worker/**"
       - "scripts/alpha_lab_admission_gate.py"
@@ -70,11 +72,12 @@ jobs:
           python -m pip install -e "./data_engineering[test]"
 
       - name: Check Python compilation
-        run: python -m compileall -q alpha_lab data_engineering
+        run: python -m compileall -q alpha_lab alpha_lab_contracts data_engineering
 
       - name: Run research tests
         run: |
           python -m pytest -o addopts='' -q \
+            alpha_lab_contracts/tests/ \
             alpha_lab/tests/ \
             alpha_lab/calibration/ \
             tests/test_data_engineering.py \

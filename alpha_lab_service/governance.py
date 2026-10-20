@@ -1,4 +1,4 @@
-"""Active v1.2 integrity gate: frozen v1.1 core plus separately versioned governance."""
+"""Active v1.3 integrity gate: frozen v1.1 core plus current governance and service."""
 
 from __future__ import annotations
 
@@ -12,8 +12,8 @@ from alpha_lab_service.manifest import verify_manifest
 
 ROOT = Path(__file__).resolve().parents[1]
 V11_MANIFEST = ROOT / "alpha_lab/freeze-manifest-v1.1.json"
-V12_GOVERNANCE = ROOT / "alpha_lab/freeze-manifest-v1.2.json"
-SERVICE_MANIFEST = ROOT / "alpha_lab_service/protocol-manifest-v1.json"
+V13_GOVERNANCE = ROOT / "alpha_lab/freeze-manifest-v1.3.json"
+SERVICE_MANIFEST = ROOT / "alpha_lab_service/protocol-manifest-v2.json"
 REPLACED_BOUNDARY = {".github/CODEOWNERS", ".github/workflows/alpha-lab-freeze.yml"}
 
 
@@ -38,8 +38,8 @@ def verify_v11_core() -> list[str]:
 
 def verify_all() -> list[str]:
     errors = verify_v11_core()
-    errors.extend(f"v1.2 governance {item}" for item in verify_manifest(ROOT, V12_GOVERNANCE, governance=True))
-    errors.extend(f"Python service {item}" for item in verify_manifest(ROOT, SERVICE_MANIFEST))
+    errors.extend(f"v1.3 governance {item}" for item in verify_manifest(ROOT, V13_GOVERNANCE, governance=True, manifest_version="1.3-governance"))
+    errors.extend(f"Python service {item}" for item in verify_manifest(ROOT, SERVICE_MANIFEST, manifest_version="2.0-python-factor-service"))
     return errors
 
 
@@ -48,7 +48,7 @@ def main() -> int:
     for error in errors:
         print(error)
     if not errors:
-        print("Alpha Lab v1.2 governance and v1.1 frozen core: valid")
+        print("Alpha Lab v1.3 governance, service v2, and v1.1 frozen core: valid")
     return 1 if errors else 0
 
 

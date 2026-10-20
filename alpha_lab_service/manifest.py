@@ -16,15 +16,23 @@ SERVICE_FILES = (
     "scripts/alpha_lab_admission_gate.py",
     ".github/CODEOWNERS",
 )
+SERVICE_V2_FILES = SERVICE_FILES + ("alpha_lab_contracts/",)
 GOVERNANCE_FILES = (
     ".github/CODEOWNERS",
     ".github/workflows/alpha-lab-freeze.yml",
     ".github/workflows/alpha-lab-python-service.yml",
     "scripts/alpha_lab_admission_gate.py",
 )
+GOVERNANCE_V13_FILES = GOVERNANCE_FILES + (
+    "alpha_lab_service/manifest.py",
+    "alpha_lab_service/governance.py",
+    "alpha_lab_service/protected-files.json",
+)
 EXCLUDED_MANIFESTS = {
     "alpha_lab_service/protocol-manifest-v1.json",
+    "alpha_lab_service/protocol-manifest-v2.json",
     "alpha_lab/freeze-manifest-v1.2.json",
+    "alpha_lab/freeze-manifest-v1.3.json",
 }
 
 
@@ -36,8 +44,11 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _paths(root: Path, governance: bool) -> list[Path]:
-    patterns = GOVERNANCE_FILES if governance else SERVICE_FILES
+def _paths(root: Path, governance: bool, manifest_version: str) -> list[Path]:
+    if governance:
+        patterns = GOVERNANCE_V13_FILES if manifest_version == "1.3-governance" else GOVERNANCE_FILES
+    else:
+        patterns = SERVICE_V2_FILES if manifest_version == "2.0-python-factor-service" else SERVICE_FILES
     result: set[Path] = set()
     for item in patterns:
         candidate = root / item
@@ -52,21 +63,26 @@ def _paths(root: Path, governance: bool) -> list[Path]:
     return sorted(result)
 
 
-def build_manifest(root: Path, *, governance: bool = False) -> dict:
+def build_manifest(root: Path, *, governance: bool = False, manifest_version: str | None = None) -> dict:
+    defaults = {True: "1.2-governance", False: "1.0-python-factor-service"}
+    manifest_version = manifest_version or defaults[governance]
+    supported = {"1.2-governance", "1.3-governance"} if governance else {"1.0-python-factor-service", "2.0-python-factor-service"}
+    if manifest_version not in supported:
+        raise ValueError(f"unsupported {'governance' if governance else 'service'} manifest version: {manifest_version}")
     files = {
         path.relative_to(root).as_posix(): _sha256(path)
-        for path in _paths(root, governance)
+        for path in _paths(root, governance, manifest_version)
         if path.relative_to(root).as_posix() not in EXCLUDED_MANIFESTS
     }
     return {
-        "manifest_version": "1.2-governance" if governance else "1.0-python-factor-service",
+        "manifest_version": manifest_version,
         "kind": "governance-boundary" if governance else "python-factor-service",
         "hash": "sha256",
         "files": files,
     }
 
 
-def verify_manifest(root: Path, manifest_path: Path, *, governance: bool = False) -> list[str]:
+def verify_manifest(root: Path, manifest_path: Path, *, governance: bool = False, manifest_version: str | None = None) -> list[str]:
     try:
         document = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -74,7 +90,12 @@ def verify_manifest(root: Path, manifest_path: Path, *, governance: bool = False
     expected = document.get("files")
     if not isinstance(expected, dict):
         return ["manifest: files mapping missing"]
-    current = build_manifest(root, governance=governance)["files"]
+    manifest_version = manifest_version or document.get("manifest_version")
+    try:
+        current_manifest = build_manifest(root, governance=governance, manifest_version=manifest_version)
+    except ValueError as exc:
+        return [f"metadata: {exc}"]
+    current = current_manifest["files"]
     errors: list[str] = []
     for relative, wanted in expected.items():
         path = root / relative
@@ -87,6 +108,8 @@ def verify_manifest(root: Path, manifest_path: Path, *, governance: bool = False
     expected_kind = "governance-boundary" if governance else "python-factor-service"
     if document.get("kind") != expected_kind:
         errors.append("metadata: kind")
+    if document.get("manifest_version") != manifest_version:
+        errors.append("metadata: manifest_version")
     return errors
 
 
@@ -94,6 +117,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--manifest", default="alpha_lab_service/protocol-manifest-v1.json")
     parser.add_argument("--governance", action="store_true")
+    parser.add_argument("--manifest-version")
     parser.add_argument("--write", action="store_true")
     args = parser.parse_args(argv)
     root = Path(__file__).resolve().parents[1]
@@ -101,11 +125,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.write:
         manifest_path.parent.mkdir(parents=True, exist_ok=True)
         manifest_path.write_text(
-            json.dumps(build_manifest(root, governance=args.governance), indent=2, sort_keys=True) + "\n",
+            json.dumps(build_manifest(root, governance=args.governance, manifest_version=args.manifest_version), indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
         return 0
-    errors = verify_manifest(root, manifest_path, governance=args.governance)
+    errors = verify_manifest(root, manifest_path, governance=args.governance, manifest_version=args.manifest_version)
     for error in errors:
         print(error)
     return 1 if errors else 0
