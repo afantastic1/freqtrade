@@ -154,7 +154,7 @@
 
 ### Final verification
 
-- [ ] Run the full Data Engineering and catalog tests plus existing importer regressions.
+- [x] Run the full Data Engineering and catalog tests plus existing importer regressions: 138 passed.
 - [x] Run governance/freeze checks, `compileall`, package build/metadata inspection, and `git diff --check`. Governance passed; freeze status is documented above.
 - [x] Verify no Feather or raw ZIP source changed and no MCP/Agent download or publish operation was exposed.
-- [ ] Run `superpowers:verification-before-completion` before claiming completion.
+- [x] Run `superpowers:verification-before-completion` before claiming completion. Final verification: 138 tests passed; compileall, wheel build/metadata inspection, working/range `git diff --check`, and governance passed. Freeze verification remains nonzero for the existing CODEOWNERS/workflow manifest drift. Independent review’s four Important findings were fixed and re-reviewed with no remaining findings.
