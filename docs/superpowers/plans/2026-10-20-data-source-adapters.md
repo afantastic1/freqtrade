@@ -64,11 +64,11 @@
 - Produces `FreqtradeFeatherAdapter(source_roots, catalog, dataset_scope)` implementing `discover(request) -> list[SourceArtifact]` and `read(artifact) -> ObservationBatch`.
 - Each artifact is an exact monthly bounded view of a potentially multi-year Feather file; artifact bounds are the month/request intersection, not the whole file bounds.
 
-- [ ] **Step 1: Write failing tests** for Spot/Futures OHLCV, funding, OI, and mark-price close mapping; exact monthly slicing of a multi-month sparse Feather source; duplicate and out-of-order preservation; unchanged source bytes; symlink/traversal rejection; source Feather does not satisfy normalized plan coverage.
-- [ ] **Step 2: Run `pytest tests/test_data_engineering_source_freqtrade.py -q` and confirm the adapter tests fail.**
-- [ ] **Step 3: Implement read-only local discovery and bounded artifact reads** using native Freqtrade decoding where correct, while avoiding cleanup/fill/dedup and preserving the original row order.
-- [ ] **Step 4: Run the focused adapter tests plus relevant `tests/test_data_engineering_catalog_v3.py` cases; confirm they pass.**
-- [ ] **Step 5: Commit** as `feat(data): add local Feather source adapter`.
+- [x] **Step 1: Write failing tests** for Spot/Futures OHLCV, funding, OI, and mark-price close mapping; exact monthly slicing of a multi-month sparse Feather source; duplicate and out-of-order preservation; unchanged source bytes; and symlink/traversal rejection.
+- [x] **Step 2: Run `pytest tests/test_data_engineering_source_freqtrade.py -q` and confirm the adapter tests fail.** Expected missing-module collection failure observed before implementation.
+- [x] **Step 3: Implement read-only local discovery and bounded artifact reads** using native Freqtrade decoding where correct, while avoiding cleanup/fill/dedup and preserving the original row order.
+- [x] **Step 4: Run the focused adapter tests plus relevant `tests/test_data_engineering_catalog_v3.py` cases; confirm they pass.** `--noconftest` run: 67 passed.
+- [x] **Step 5: Commit** as `feat(data): add local Feather source adapter`.
 
 ### Task 3: Binance Vision crypto adapter
 
@@ -102,7 +102,7 @@
 - Plan statuses include `PRESENT`, `MISSING`, `UNAVAILABLE`, `INVALID`, and `PLANNED`; execution statuses include the spec's download/checksum/parse/quality/publish failures.
 - Receipt binds source SHA-256, normalized SHA-256, dataset identity, exact bounds, adapter/converter version, and schema version.
 
-- [ ] **Step 1: Write failing pipeline tests** for gap/month planning, no download/write in dry-run, normalized-only PRESENT semantics, sparse event completeness, cadence/duplicate/numeric/OHLCV validation, bound validation, latest invalid revision behavior, source change after validation, and journal restart states.
+- [ ] **Step 1: Write failing pipeline tests** for gap/month planning, no download/write in dry-run, normalized-only PRESENT semantics (existing Feather never suppresses conversion), sparse event completeness, cadence/duplicate/numeric/OHLCV validation, bound validation, latest invalid revision behavior, source change after validation, and journal restart states.
 - [ ] **Step 2: Run `pytest tests/test_data_engineering_source_pipeline.py -q` and confirm the stage semantics fail.**
 - [ ] **Step 3: Implement per-month planning, source-preserving validation, digest-bound receipts, and journal states `DISCOVERED`, `DOWNLOADED`, `VALIDATED`, `OBJECT_PUBLISHED`, `CATALOG_REGISTERED` plus terminal failures.** An invalid latest catalog revision is returned as `INVALID`; do not fall back silently.
 - [ ] **Step 4: Run the focused pipeline tests; confirm dry-run has no payload requests and recovery finishes catalog registration without claiming premature presence.**

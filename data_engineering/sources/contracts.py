@@ -132,6 +132,8 @@ class SourceArtifact:
     availability: AvailabilityStatus | str
     expected_checksum: str | None = None
     local_path: Path | None = None
+    source_root_id: str | None = None
+    relative_path: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.identity, DatasetIdentity):
@@ -150,6 +152,10 @@ class SourceArtifact:
             _validate_digest(self.expected_checksum, "expected_checksum")
         if self.local_path is not None:
             object.__setattr__(self, "local_path", Path(self.local_path))
+        if self.source_root_id is not None:
+            _validate_identity_text(self.source_root_id, "source_root_id")
+        if self.relative_path is not None:
+            _validate_identity_text(self.relative_path, "relative_path")
 
 
 @dataclass(frozen=True, slots=True)
