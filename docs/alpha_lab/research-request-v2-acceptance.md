@@ -1,6 +1,6 @@
 # ResearchRequest v2 and CampaignPolicy v1 acceptance
 
-**Implementation HEAD before this report:** `095f70b61a28dea4b5fe582b5fbd94d916a73d10`  
+**Implementation HEAD before this report update:** `74a1c23a46c79037b7355060cfb9c74efce0c9f6`  
 **Base:** `33438bc944`  
 **Scope:** PR-01 contract, registry, governance, and CI changes only.
 
@@ -8,8 +8,8 @@
 
 | Command | Result |
 | --- | --- |
-| `/home/von/workspace/venv/bin/python -m pytest -o addopts='' -q alpha_lab_contracts/tests alpha_lab/tests/test_config.py alpha_lab_service/tests/test_manifest.py alpha_lab_service/tests/test_ci_protection.py` | PASS: 74 passed |
-| `/home/von/workspace/venv/bin/python -m pytest -o addopts='' alpha_lab_contracts/tests alpha_lab/tests/test_config.py alpha_lab/tests/test_runner_research_key.py -q` | PASS: 71 passed; includes repeated v1.1 research-key reuse regression |
+| `/home/von/workspace/venv/bin/python -m pytest -o addopts='' -q alpha_lab_contracts/tests alpha_lab/tests/test_config.py alpha_lab_service/tests/test_manifest.py alpha_lab_service/tests/test_ci_protection.py` | PASS: 85 passed |
+| `/home/von/workspace/venv/bin/python -m pytest -o addopts='' alpha_lab_contracts/tests alpha_lab/tests/test_config.py alpha_lab/tests/test_runner_research_key.py -q` | PASS: 82 passed; includes repeated v1.1 research-key reuse regression |
 | `/home/von/workspace/venv/bin/python -m alpha_lab_service.governance` | PASS: v1.1 frozen core, v1.3 governance, and service v2 valid |
 | `git diff --check 33438bc944..HEAD` | PASS: no whitespace errors |
 
@@ -23,9 +23,9 @@ The pytest command uses `-o addopts=''` because the available environment does n
 | `alpha_lab/freeze-manifest-v1.2.json` | `7a0df0e0889bc784d79f5b5b0fd5242105768e2b7b1de103b7eae69d1ea024fd` | Preserved byte-for-byte |
 | `alpha_lab_service/protocol-manifest-v1.json` | `2b9121505500e6e64e653e73a0dc20c465b80731a0276b82cbeb9d8235be3291` | Preserved byte-for-byte |
 | `alpha_lab/freeze-manifest-v1.3.json` | `e3cd4379741c3164c1af23a8785136e004a7605c570537d81cde149ac2bc9196` | New active governance manifest |
-| `alpha_lab_service/protocol-manifest-v2.json` | `e8abd00d55c553137e710e6ba8ca1f4e8101020629c247bc641e0c80c768022d` | New active service manifest |
+| `alpha_lab_service/protocol-manifest-v2.json` | `c2007224c47afec184cea115c81381673bae7626a533e5f8b946bbc5a8a47e02` | New active service manifest |
 
-The three historical manifest digests above match their pinned baseline values and the post-change digests. The new manifests are generated from the committed contract files and current verifier/CI controls.
+The three historical manifest digests above match their pinned baseline values and the post-change digests. The new manifests are generated from the committed contract files and current verifier/CI controls. The final review fix pass preserves policy fractional-second identity, rejects malformed offsets and unsupported timestamp precision, and makes authorization mappings immutable.
 
 ## Scope review
 
