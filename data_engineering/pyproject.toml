@@ -16,7 +16,7 @@ test = ["pytest>=8"]
 data-engineering = "data_engineering.__main__:main"
 
 [tool.setuptools]
-packages = ["data_engineering", "data_engineering.scripts", "data_engineering.quality"]
+packages = ["data_engineering", "data_engineering.scripts", "data_engineering.quality", "data_engineering.sources"]
 package-dir = {"data_engineering" = "."}
 include-package-data = true
 
