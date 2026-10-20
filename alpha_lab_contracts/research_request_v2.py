@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 import hashlib
 import json
 import re
 from typing import Mapping
 
+from ._timestamps import parse_rfc3339_utc
 from .campaign_policy_v1 import CampaignPolicyRegistry
 from .data_types import is_data_type
 
@@ -17,22 +18,12 @@ _FIELDS = {
     "start", "end", "symbols", "timeframe", "mode", "data_types", "split", "lookback_bars",
     "label_horizon_bars", "embargo_bars",
 }
-_RFC3339 = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$")
 _REQUEST_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 _SPLITS = {"discovery", "validation", "holdout"}
 
 
 def _parse_timestamp(value: object, name: str) -> datetime:
-    if not isinstance(value, str) or not _RFC3339.fullmatch(value):
-        raise ValueError(f"{name} must be RFC 3339 with an explicit UTC offset")
-    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
-    try:
-        parsed = datetime.fromisoformat(normalized)
-    except ValueError as exc:
-        raise ValueError(f"invalid {name} timestamp") from exc
-    if parsed.utcoffset() is None:
-        raise ValueError(f"{name} must include an explicit UTC offset")
-    return parsed.astimezone(timezone.utc)
+    return parse_rfc3339_utc(value, name)
 
 
 def _canonical(value: object) -> str:

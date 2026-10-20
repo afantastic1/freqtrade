@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator, FormatChecker
 
 from alpha_lab_contracts.campaign_policy_v1 import CampaignPolicyV1, FileCampaignPolicyRegistry
 from alpha_lab_contracts.research_request_v2 import ResearchRequestV2
@@ -58,7 +58,7 @@ def test_request_accepts_exclusive_split_end() -> None:
     assert request.end.isoformat() == "2025-01-01T00:00:00+00:00"
 
 
-@pytest.mark.parametrize("timestamp", ["2023-01-01", "2023-01-01T00:00:00", "2023-01-01T00:00:00+", "not-a-date"])
+@pytest.mark.parametrize("timestamp", ["2023-01-01", "2023-01-01T00:00:00", "2023-01-01T00:00:00+", "2023-02-01T01:00:00+00:60", "2023-02-01T01:00:00+00:99", "not-a-date"])
 def test_request_rejects_naive_or_malformed_timestamps(timestamp: str) -> None:
     with pytest.raises(ValueError):
         ResearchRequestV2.from_dict(request_raw(start=timestamp), FileCampaignPolicyRegistry())
@@ -102,10 +102,56 @@ def test_request_schema_accepts_example_shape() -> None:
     Draft202012Validator(schema).validate(request_raw())
 
 
+def test_request_schema_rejects_malformed_timestamp_with_format_checker() -> None:
+    schema = json.loads((Path(__file__).parents[1] / "schemas/research-request-v2.schema.json").read_text())
+    raw = request_raw(start="2023-02-01T01:00:00+00:99")
+    with pytest.raises(Exception):
+        Draft202012Validator(schema, format_checker=FormatChecker()).validate(raw)
+
+
+@pytest.mark.parametrize(
+    ("start", "end"),
+    [
+        ("2022-12-31T23:00:00Z", "2023-01-01T01:00:00Z"),
+        ("2023-12-31T23:00:00Z", "2024-01-01T01:00:00Z"),
+    ],
+)
+def test_request_rejects_interval_outside_selected_split(start: str, end: str) -> None:
+    with pytest.raises(ValueError, match="outside the selected campaign split"):
+        ResearchRequestV2.from_dict(request_raw(start=start, end=end), FileCampaignPolicyRegistry())
+
+
+def test_request_rejects_fractional_precision_beyond_datetime_resolution() -> None:
+    with pytest.raises(ValueError, match="precision"):
+        ResearchRequestV2.from_dict(request_raw(start="2023-02-01T00:00:00.0000001Z"), FileCampaignPolicyRegistry())
+
+
 def test_request_canonical_identity_normalizes_utc_but_preserves_symbol_order() -> None:
     registry = FileCampaignPolicyRegistry()
-    first = ResearchRequestV2.from_dict(request_raw(start="2023-02-01T03:00:00+03:00"), registry)
-    equivalent = ResearchRequestV2.from_dict(request_raw(start="2023-02-01T00:00:00Z"), registry)
+    first = ResearchRequestV2.from_dict(request_raw(start="2023-02-01T03:00:00+03:00", symbols=["BTCUSDT", "ETHUSDT"]), registry)
+    equivalent = ResearchRequestV2.from_dict(request_raw(start="2023-02-01T00:00:00Z", symbols=["BTCUSDT", "ETHUSDT"]), registry)
     assert first.sha256() == equivalent.sha256()
     reversed_symbols = ResearchRequestV2.from_dict(request_raw(symbols=["ETHUSDT", "BTCUSDT"]), registry)
     assert first.sha256() != reversed_symbols.sha256()
+
+
+def test_request_rejects_mode_allowed_by_registry_but_denied_by_campaign_policy() -> None:
+    raw_policy = policy_raw()
+    raw_policy["modes"] = ["time_series"]
+    policy = CampaignPolicyV1.from_dict(with_policy_hash(raw_policy))
+    request = request_raw(mode="cross_sectional", campaign_policy_sha256=policy.sha256())
+
+    class Registry:
+        def get(self, campaign_id: str, policy_version: str, policy_sha256: str) -> CampaignPolicyV1:
+            return policy
+
+    with pytest.raises(ValueError, match="mode is not authorized"):
+        ResearchRequestV2.from_dict(request, Registry())
+
+
+def with_policy_hash(raw: dict[str, object]) -> dict[str, object]:
+    import hashlib
+
+    unhashed = {key: value for key, value in raw.items() if key != "policy_sha256"}
+    raw["policy_sha256"] = hashlib.sha256(json.dumps(unhashed, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return raw

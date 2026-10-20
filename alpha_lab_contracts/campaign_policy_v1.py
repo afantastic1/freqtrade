@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 import hashlib
 import json
 from pathlib import Path
 import re
+from types import MappingProxyType
 from typing import Mapping, Protocol
 
+from ._timestamps import parse_rfc3339_utc
 from .data_types import is_data_type
 
 CAMPAIGNS_ROOT = Path(__file__).with_name("campaigns")
@@ -20,16 +22,7 @@ _BOUNDS = ("lookback_bars", "label_horizon_bars", "embargo_bars")
 
 
 def _timestamp(value: object) -> datetime:
-    if not isinstance(value, str) or not value:
-        raise ValueError("timestamp must be a nonempty RFC 3339 string")
-    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
-    try:
-        parsed = datetime.fromisoformat(normalized)
-    except ValueError as exc:
-        raise ValueError("invalid RFC 3339 timestamp") from exc
-    if parsed.tzinfo is None or parsed.utcoffset() is None:
-        raise ValueError("timestamp must include an explicit UTC offset")
-    return parsed.astimezone(timezone.utc)
+    return parse_rfc3339_utc(value)
 
 
 def _canonical(value: object) -> str:
@@ -105,14 +98,21 @@ class CampaignPolicyV1:
             if type(low) is not int or type(high) is not int or low < (0 if key == "embargo_bars" else 1) or low > high:
                 raise ValueError("invalid parameter bounds")
             bounds[key] = (low, high)
-        policy = cls(campaign_id, version, **lists, splits=splits, parameter_bounds=bounds, policy_sha256=supplied_hash)
+        policy = cls(
+            campaign_id,
+            version,
+            **lists,
+            splits=MappingProxyType(splits),
+            parameter_bounds=MappingProxyType(bounds),
+            policy_sha256=supplied_hash,
+        )
         if supplied_hash != policy.sha256():
             raise ValueError("policy_sha256 does not match canonical policy content")
         return policy
 
     def canonical_json(self) -> str:
         def stamp(value: datetime) -> str:
-            return value.isoformat(timespec="seconds").replace("+00:00", "Z")
+            return value.isoformat(timespec="auto").replace("+00:00", "Z")
         raw = {
             "protocol_version": "1.0-campaign-policy", "campaign_id": self.campaign_id,
             "policy_version": self.policy_version, "symbols": list(self.symbols),
