@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "required_owner_paths": [
+    "/alpha_lab_service/",
+    "/containers/alpha-lab-factor-worker/",
+    "/scripts/alpha_lab_admission_gate.py",
+    "/.github/CODEOWNERS",
+    "/.github/workflows/alpha-lab-freeze.yml",
+    "/.github/workflows/alpha-lab-python-service.yml",
+    "/alpha_lab/freeze-manifest-v1.2.json",
+    "/docs/alpha_lab/"
+  ],
+  "required_ci_paths": [
+    "alpha_lab_service/**",
+    "containers/alpha-lab-factor-worker/**",
+    "scripts/alpha_lab_admission_gate.py",
+    ".github/CODEOWNERS",
+    ".github/workflows/alpha-lab-freeze.yml",
+    ".github/workflows/alpha-lab-python-service.yml",
+    "alpha_lab/freeze-manifest-v1.2.json",
+    "docs/alpha_lab/python-factor-*.md"
+  ]
+}

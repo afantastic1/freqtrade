@@ -1,0 +1,48 @@
+name: Alpha Lab Python Factor Service
+
+on:
+  push:
+    branches: ["fix/**", "codex/**", "my_dev"]
+    paths:
+      - "alpha_lab_service/**"
+      - "containers/alpha-lab-factor-worker/**"
+      - "scripts/alpha_lab_admission_gate.py"
+      - ".github/CODEOWNERS"
+      - ".github/workflows/alpha-lab-freeze.yml"
+      - ".github/workflows/alpha-lab-python-service.yml"
+      - "alpha_lab/freeze-manifest-v1.2.json"
+      - "docs/alpha_lab/python-factor-*.md"
+  pull_request:
+    paths:
+      - "alpha_lab_service/**"
+      - "containers/alpha-lab-factor-worker/**"
+      - "scripts/alpha_lab_admission_gate.py"
+      - ".github/CODEOWNERS"
+      - ".github/workflows/alpha-lab-freeze.yml"
+      - ".github/workflows/alpha-lab-python-service.yml"
+      - "alpha_lab/freeze-manifest-v1.2.json"
+      - "docs/alpha_lab/python-factor-*.md"
+
+permissions:
+  contents: read
+
+jobs:
+  service-security:
+    name: Protocol, descriptive E2E and Worker isolation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v6
+      - name: Install locked service test environment
+        run: uv sync --project alpha_lab_service --locked --group test
+      - name: Build pinned untrusted Worker
+        run: |
+          docker build --pull=false --build-arg PIP_INDEX_URL=https://pypi.org/simple -t alpha-lab-factor-worker:ci containers/alpha-lab-factor-worker
+          echo "ALPHA_LAB_WORKER_IMAGE=$(docker image inspect --format '{{.Id}}' alpha-lab-factor-worker:ci)" >> "$GITHUB_ENV"
+      - name: Verify v1.2 governance and service manifests
+        run: uv run --project alpha_lab_service --locked python -m alpha_lab_service.governance
+      - name: Run protocol, store, MCP, causal and actual-container tests
+        run: uv run --project alpha_lab_service --locked python -m pytest -q alpha_lab_service/tests/test_worker_container.py alpha_lab_service/tests/test_end_to_end.py alpha_lab_service/tests

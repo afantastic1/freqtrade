@@ -9,6 +9,11 @@ on:
       - "my_dev"
     paths:
       - "alpha_lab/**"
+      - "alpha_lab_service/**"
+      - "containers/alpha-lab-factor-worker/**"
+      - "scripts/alpha_lab_admission_gate.py"
+      - ".github/CODEOWNERS"
+      - ".github/workflows/alpha-lab-python-service.yml"
       - "data_engineering/**"
       - "tests/test_data_engineering*.py"
       - "tests/test_fundamental*.py"
@@ -25,6 +30,11 @@ on:
   pull_request:
     paths:
       - "alpha_lab/**"
+      - "alpha_lab_service/**"
+      - "containers/alpha-lab-factor-worker/**"
+      - "scripts/alpha_lab_admission_gate.py"
+      - ".github/CODEOWNERS"
+      - ".github/workflows/alpha-lab-python-service.yml"
       - "data_engineering/**"
       - "tests/test_data_engineering*.py"
       - "tests/test_fundamental*.py"
@@ -93,4 +103,4 @@ jobs:
           python-version: "3.13"
 
       - name: Verify freeze manifest
-        run: python -m alpha_lab.freeze
+        run: python -m alpha_lab_service.governance
