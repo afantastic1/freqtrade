@@ -168,6 +168,83 @@ def test_register_feather_file_hashes_source_and_builds_monthly_partitions(tmp_p
     assert source.read_bytes() == source_bytes
 
 
+def _register_two_row_snapshot(tmp_path):
+    adapter = _freqtrade_feather_module()
+    source_root = tmp_path / "pinned-source"
+    source_root.mkdir()
+    source = source_root / "BTC_USDT_USDT-5m-futures.feather"
+    _ohlcv_frame(["2025-01-01T00:00:00Z", "2025-01-01T00:05:00Z"]).to_feather(source)
+    record = adapter.register_feather_file(
+        tmp_path / "pinned-catalog", source_root_id="binance-data", source_root=source_root,
+        relative_path=Path(source.name), exchange="binance", market_type="futures",
+        asset="BTC", exchange_symbol="BTC/USDT:USDT", data_kind="ohlcv",
+        timeframe="5m", source="freqtrade-local",
+    )
+    return record, source_root, source, tmp_path / "pinned-catalog"
+
+
+def test_read_pinned_snapshot_returns_exact_half_open_rows(tmp_path):
+    catalog = _v3_catalog_module()
+    record, source_root, _, root = _register_two_row_snapshot(tmp_path)
+    snapshot = catalog.read_dataset_snapshot(
+        root, record["manifest"]["dataset_id"], record["manifest_sha256"],
+        datetime(2025, 1, 1, 0, 5, tzinfo=timezone.utc),
+        datetime(2025, 1, 1, 0, 10, tzinfo=timezone.utc),
+        source_roots={"binance-data": source_root},
+    )
+    assert snapshot.manifest_sha256 == record["manifest_sha256"]
+    assert snapshot.observations["date"].tolist() == [pd.Timestamp("2025-01-01T00:05:00Z")]
+
+
+def test_read_pinned_older_revision_is_stable(tmp_path):
+    catalog = _v3_catalog_module()
+    record, source_root, source, root = _register_two_row_snapshot(tmp_path)
+    first = record
+    second = _freqtrade_feather_module().register_feather_file(
+        root, source_root_id="binance-data", source_root=source_root,
+        relative_path=Path(source.name), exchange="binance", market_type="futures",
+        asset="BTC", exchange_symbol="BTC/USDT:USDT", data_kind="ohlcv",
+        timeframe="5m", source="freqtrade-local-v2",
+    )
+    assert second["manifest_sha256"] != first["manifest_sha256"]
+    snapshot = catalog.read_dataset_snapshot(
+        root, first["manifest"]["dataset_id"], first["manifest_sha256"],
+        datetime(2025, 1, 1, tzinfo=timezone.utc), datetime(2025, 1, 2, tzinfo=timezone.utc),
+        source_roots={"binance-data": source_root},
+    )
+    assert snapshot.manifest_sha256 == first["manifest_sha256"]
+
+
+def test_read_dataset_snapshot_rejects_tampered_bytes_and_symlink_source(tmp_path):
+    catalog = _v3_catalog_module()
+    record, source_root, source, root = _register_two_row_snapshot(tmp_path)
+    changed = _ohlcv_frame(["2025-01-01T00:00:00Z", "2025-01-01T00:05:00Z"])
+    changed.loc[1, "close"] = 101.0
+    changed.to_feather(source)
+    args = (root, record["manifest"]["dataset_id"], record["manifest_sha256"],
+            datetime(2025, 1, 1, tzinfo=timezone.utc), datetime(2025, 1, 2, tzinfo=timezone.utc))
+    with pytest.raises(ValueError, match="SOURCE_HASH_MISMATCH"):
+        catalog.read_dataset_snapshot(*args, source_roots={"binance-data": source_root})
+    real = tmp_path / "real-source"
+    real.mkdir()
+    (real / source.name).write_bytes(source.read_bytes())
+    alias = tmp_path / "source-alias"
+    alias.symlink_to(real, target_is_directory=True)
+    with pytest.raises(ValueError, match="symlink"):
+        catalog.read_dataset_snapshot(*args, source_roots={"binance-data": alias})
+
+
+def test_read_dataset_snapshot_rejects_unknown_digest(tmp_path):
+    catalog = _v3_catalog_module()
+    record, source_root, _, root = _register_two_row_snapshot(tmp_path)
+    with pytest.raises(ValueError, match="pinned manifest"):
+        catalog.read_dataset_snapshot(
+            root, record["manifest"]["dataset_id"], "0" * 64,
+            datetime(2025, 1, 1, tzinfo=timezone.utc), datetime(2025, 1, 2, tzinfo=timezone.utc),
+            source_roots={"binance-data": source_root},
+        )
+
+
 def test_register_feather_file_is_idempotent_and_links_changed_source_revision(tmp_path):
     adapter = _freqtrade_feather_module()
     source_root = tmp_path / "futures"

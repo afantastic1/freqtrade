@@ -11,6 +11,7 @@ import tempfile
 from functools import lru_cache
 from importlib.resources import files
 from typing import Any, Mapping
+from dataclasses import dataclass
 
 from jsonschema import Draft202012Validator, FormatChecker
 import pandas as pd
@@ -301,7 +302,8 @@ def list_datasets(
 
 
 def _validate_dataset_snapshot(
-    root: Path, dataset_id: str, *, source_roots: Mapping[str, Path]
+    root: Path, dataset_id: str, *, source_roots: Mapping[str, Path],
+    manifest_sha256: str | None = None,
 ) -> tuple[dict[str, Any], list[tuple[dict[str, Any], pd.DataFrame]], dict[str, Any] | None]:
     """Validate one dataset and return only the verified partition slices."""
     try:
@@ -317,11 +319,16 @@ def _validate_dataset_snapshot(
         for record in records
         if record["manifest"]["revision"]["previous_manifest_sha256"] is not None
     }
-    leaves = [record for record in records if record["manifest_sha256"] not in referenced]
-    if len(leaves) != 1:
+    if manifest_sha256 is None:
+        selected = [record for record in records if record["manifest_sha256"] not in referenced]
+    else:
+        selected = [record for record in records if record["manifest_sha256"] == manifest_sha256]
+    if len(selected) != 1:
         return ({"dataset_id": dataset_id, "manifest": None, "status": "INVALID",
-                 "issues": [{"code": "INVALID_LINEAGE", "message": "catalog has no unique latest version"}]}, [], None)
-    latest = leaves[0]
+                 "issues": [{"code": "UNKNOWN_PIN" if manifest_sha256 else "INVALID_LINEAGE",
+                             "message": "pinned manifest is not registered" if manifest_sha256
+                             else "catalog has no unique latest version"}]}, [], None)
+    latest = selected[0]
     manifest = latest["manifest"]
     issues: list[dict[str, str]] = []
     registered_quality = manifest.get("quality", {})
@@ -449,6 +456,58 @@ def validate_dataset(
     """Verify the latest registered version against its configured source bytes."""
     result, _, _ = _validate_dataset_snapshot(root, dataset_id, source_roots=source_roots)
     return result
+
+
+@dataclass(frozen=True)
+class CatalogSnapshotV3:
+    """One integrity-verified, explicitly pinned Catalog v3 time slice."""
+
+    manifest: dict[str, Any]
+    manifest_sha256: str
+    observations: pd.DataFrame
+    quality: dict[str, Any]
+
+
+def read_dataset_snapshot(
+    root: Path,
+    dataset_id: str,
+    manifest_sha256: str,
+    start: datetime,
+    end: datetime,
+    *,
+    source_roots: Mapping[str, Path],
+) -> CatalogSnapshotV3:
+    """Read verified observations for an exact manifest pin and half-open UTC range."""
+    if not isinstance(manifest_sha256, str) or len(manifest_sha256) != 64:
+        raise ValueError("invalid pinned manifest digest")
+    start_utc = pd.Timestamp(start)
+    end_utc = pd.Timestamp(end)
+    if start_utc.tzinfo is None or end_utc.tzinfo is None:
+        raise ValueError("snapshot bounds must be timezone-aware")
+    start_utc, end_utc = start_utc.tz_convert("UTC"), end_utc.tz_convert("UTC")
+    if start_utc >= end_utc:
+        raise ValueError("snapshot interval must be nonempty")
+    result, partitions, selected = _validate_dataset_snapshot(
+        root, dataset_id, source_roots=source_roots, manifest_sha256=manifest_sha256
+    )
+    if selected is None or result["status"] == "INVALID":
+        codes = "; ".join(
+            f"{item['code']}: {item.get('message', '')}" for item in result.get("issues", [])
+        )
+        raise ValueError(f"pinned manifest validation failed: {codes}")
+    if selected["manifest_sha256"] != manifest_sha256:
+        raise ValueError("pinned manifest digest mismatch")
+    rows = [frame for _, frame in partitions]
+    observations = pd.concat(rows, ignore_index=True) if rows else pd.DataFrame()
+    if not observations.empty:
+        dates = pd.to_datetime(observations["date"], utc=True)
+        observations = observations.loc[(dates >= start_utc) & (dates < end_utc)].reset_index(drop=True)
+    quality = dict(result.get("quality", {}))
+    quality["row_count"] = len(observations)
+    return CatalogSnapshotV3(
+        manifest=selected["manifest"], manifest_sha256=manifest_sha256,
+        observations=observations, quality=quality,
+    )
 
 
 def get_coverage(
