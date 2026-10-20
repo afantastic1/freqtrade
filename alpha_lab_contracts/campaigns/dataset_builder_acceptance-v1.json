@@ -1,0 +1,20 @@
+{
+  "protocol_version": "1.0-campaign-policy",
+  "campaign_id": "dataset_builder_acceptance",
+  "policy_version": "1",
+  "symbols": ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"],
+  "timeframes": ["5m", "1h"],
+  "modes": ["time_series", "cross_sectional"],
+  "data_types": ["futures_ohlcv", "spot_ohlcv", "funding_rate", "open_interest"],
+  "splits": {
+    "discovery": {"start": "2022-01-01T00:00:00Z", "end": "2025-01-01T00:00:00Z"},
+    "validation": {"start": "2025-01-01T00:00:00Z", "end": "2026-01-01T00:00:00Z"},
+    "holdout": {"start": "2026-01-01T00:00:00Z", "end": "2027-01-01T00:00:00Z"}
+  },
+  "parameter_bounds": {
+    "lookback_bars": {"min": 1, "max": 500},
+    "label_horizon_bars": {"min": 1, "max": 100},
+    "embargo_bars": {"min": 0, "max": 100}
+  },
+  "policy_sha256": "b0b2ca3f678c991a1d104f9141ea4f8434bebd987638a5754878ed7c838aa61f"
+}

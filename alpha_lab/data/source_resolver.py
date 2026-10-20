@@ -52,6 +52,8 @@ class DatasetSourceResolver:
             raise ValueError("request symbol or data type has no trusted source identity mapping")
         market_type, data_kind = _TYPE[data_type]
         mapped = self.symbol_identities[symbol]
+        if data_type in mapped and isinstance(mapped[data_type], Mapping):
+            mapped = mapped[data_type]
         if mapped.get("exchange") != self.exchange or mapped.get("market_type") != market_type:
             raise ValueError("configured source identity does not match requested data type")
         return DatasetIdentity(
@@ -66,8 +68,10 @@ class DatasetSourceResolver:
             for data_type in request.data_types:
                 identity = self._expected_identity(symbol, data_type, request.timeframe)
                 candidates = [record for record in list_datasets(self.catalog_root)
-                              if all(record["manifest"].get(field) == getattr(identity, field)
-                                     for field in ("exchange", "market_type", "asset", "exchange_symbol", "data_kind", "timeframe"))]
+                              if all(record["manifest"].get(field) == (
+                                  None if field == "timeframe" and identity.data_kind in {"funding_rate", "open_interest"}
+                                  and record["manifest"].get(field) is None else getattr(identity, field)
+                              ) for field in ("exchange", "market_type", "asset", "exchange_symbol", "data_kind", "timeframe"))]
                 if not candidates:
                     continue
                 dataset_ids = {record["manifest"]["dataset_id"] for record in candidates}
@@ -87,7 +91,7 @@ class DatasetSourceResolver:
                     self.catalog_root, dataset_id, pin, plan.warmup_start,
                     plan.label_extension_end, source_roots=self.source_roots,
                 )
-                rule_id = options.availability_rule_ids.get(data_type)
+                rule_id = options.availability_rule_ids.get(f"{symbol}:{data_type}", options.availability_rule_ids.get(data_type))
                 if rule_id is None:
                     raise ValueError(f"availability rule not configured for {data_type}")
                 rule = self.availability_registry.get(rule_id, dataset_identity=identity)

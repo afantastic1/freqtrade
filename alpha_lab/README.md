@@ -51,3 +51,24 @@ Backfill only trusts `runs/<run_id>/summary.json` when the same `run_id` has a c
 
 Legacy summaries may still contain `research_feedback`; it remains readable as
 historical policy output and is never promoted into a Research Decision.
+
+## Request-driven dataset builds
+
+Build a dataset from an authorized ResearchRequest v2 and the trusted campaign
+policy registry. Each configured source root uses `ID=PATH`; source snapshots are
+verified against their pinned Catalog v3 manifests. Select `reject` or `preserve`
+explicitly for missing observations:
+
+```bash
+python -m alpha_lab.dataset_cli dataset build \
+  --request research-request.json \
+  --catalog-root user_data/research/catalog \
+  --source-root binance-data=user_data/data/binance \
+  --output-root user_data/research/datasets \
+  --missing-policy reject
+```
+
+The request controls the date interval, timeframe, symbols, split, and requested
+data types. Output worker inputs, evaluator labels, reports, and manifests are
+immutable Parquet/JSON artifacts. The legacy `panel_cli` keeps its historical
+fixed-window behavior.
