@@ -59,6 +59,14 @@ def _freqtrade_feather_module():
     return importlib.import_module("data_engineering.freqtrade_feather")
 
 
+def _quality_contracts_module():
+    package_spec = importlib.util.find_spec("data_engineering.quality")
+    assert package_spec is not None, "data-kind quality package must exist"
+    module_spec = importlib.util.find_spec("data_engineering.quality.contracts")
+    assert module_spec is not None, "data-kind quality contracts must exist"
+    return importlib.import_module("data_engineering.quality.contracts")
+
+
 def _ohlcv_frame(dates):
     return pd.DataFrame(
         {
@@ -218,6 +226,198 @@ def test_register_feather_file_rejects_source_root_escape_and_symlink(tmp_path):
         adapter.register_feather_file(relative_path=Path("../outside.feather"), **identity)
     with pytest.raises(ValueError, match="symlink"):
         adapter.register_feather_file(relative_path=Path("link.feather"), **identity)
+
+
+def test_validate_observations_reports_available_gapless_ohlcv():
+    quality = _quality_contracts_module()
+
+    result = quality.validate_observations(
+        _ohlcv_frame(["2025-01-01T00:00:00Z", "2025-01-01T00:05:00Z"]),
+        data_kind="ohlcv",
+        timeframe="5m",
+    )
+
+    assert result["status"] == "AVAILABLE"
+    assert result["row_count"] == 2
+    assert result["cadence"]["missing_observations"] == 0
+    assert result["issues"] == []
+
+
+def test_validate_observations_marks_missing_candle_as_partial():
+    quality = _quality_contracts_module()
+
+    result = quality.validate_observations(
+        _ohlcv_frame(["2025-01-01T00:00:00Z", "2025-01-01T00:10:00Z"]),
+        data_kind="ohlcv",
+        timeframe="5m",
+    )
+
+    assert result["status"] == "PARTIAL"
+    assert result["cadence"]["missing_observations"] == 1
+
+
+@pytest.mark.parametrize(
+    ("dates", "timeframe", "code"),
+    [
+        (["2025-01-01T00:00:00Z", "2025-01-01T00:06:00Z"], "5m", "TIMEFRAME_MISALIGNED"),
+        (["2025-01-01T00:00:00", "2025-01-01T00:05:00"], "5m", "NAIVE_TIMESTAMP"),
+    ],
+)
+def test_validate_observations_rejects_misaligned_or_naive_timestamps(dates, timeframe, code):
+    quality = _quality_contracts_module()
+    frame = _ohlcv_frame(dates)
+    if code == "NAIVE_TIMESTAMP":
+        frame["date"] = pd.to_datetime(dates)
+
+    result = quality.validate_observations(
+        frame, data_kind="ohlcv", timeframe=timeframe
+    )
+
+    assert result["status"] == "INVALID"
+    assert code in {issue["code"] for issue in result["issues"]}
+
+
+def test_validate_observations_rejects_duplicate_timestamps():
+    quality = _quality_contracts_module()
+
+    result = quality.validate_observations(
+        _ohlcv_frame(["2025-01-01T00:00:00Z", "2025-01-01T00:00:00Z"]),
+        data_kind="ohlcv",
+        timeframe="5m",
+    )
+
+    assert result["status"] == "INVALID"
+    assert "DUPLICATE_TIMESTAMP" in {issue["code"] for issue in result["issues"]}
+
+
+@pytest.mark.parametrize(
+    ("column", "values", "code"),
+    [
+        ("close", [100.0, float("inf")], "NONFINITE_VALUE"),
+        ("close", [100.0, 0.0], "NONPOSITIVE_PRICE"),
+        ("volume", [2.0, -1.0], "NEGATIVE_VOLUME"),
+        ("high", [101.0, 99.0], "INVALID_OHLC_BOUNDS"),
+    ],
+)
+def test_validate_observations_rejects_invalid_ohlcv_values(column, values, code):
+    quality = _quality_contracts_module()
+    frame = _ohlcv_frame(["2025-01-01T00:00:00Z", "2025-01-01T00:05:00Z"])
+    frame[column] = values
+
+    result = quality.validate_observations(frame, data_kind="ohlcv", timeframe="5m")
+
+    assert result["status"] == "INVALID"
+    assert code in {issue["code"] for issue in result["issues"]}
+
+
+def test_validate_observations_keeps_negative_funding_rates_but_rejects_infinity():
+    quality = _quality_contracts_module()
+    frame = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2025-01-01T00:00:00Z", "2025-01-01T01:00:00Z"], utc=True),
+            "funding_rate": [-0.001, 0.001],
+        }
+    )
+
+    valid = quality.validate_observations(frame, data_kind="funding_rate", timeframe="1h")
+    frame.loc[1, "funding_rate"] = float("inf")
+    invalid = quality.validate_observations(frame, data_kind="funding_rate", timeframe="1h")
+
+    assert valid["status"] == "AVAILABLE"
+    assert invalid["status"] == "INVALID"
+    assert "NONFINITE_VALUE" in {issue["code"] for issue in invalid["issues"]}
+
+
+def test_validate_observations_requires_nonnegative_open_interest_measure():
+    quality = _quality_contracts_module()
+    frame = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2025-01-01T00:00:00Z"], utc=True),
+            "open_interest_amount": [-1.0],
+        }
+    )
+
+    result = quality.validate_observations(frame, data_kind="open_interest", timeframe="1h")
+
+    assert result["status"] == "INVALID"
+    assert "NEGATIVE_OPEN_INTEREST" in {issue["code"] for issue in result["issues"]}
+
+
+def test_validate_observations_requires_positive_mark_price():
+    quality = _quality_contracts_module()
+    frame = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2025-01-01T00:00:00Z"], utc=True),
+            "mark_price": [0.0],
+        }
+    )
+
+    result = quality.validate_observations(frame, data_kind="mark_price", timeframe="1h")
+
+    assert result["status"] == "INVALID"
+    assert "NONPOSITIVE_PRICE" in {issue["code"] for issue in result["issues"]}
+
+
+def _registered_feather(tmp_path, frame=None):
+    adapter = _freqtrade_feather_module()
+    source_root = tmp_path / "futures"
+    source_root.mkdir(exist_ok=True)
+    source = source_root / "BTC_USDT_USDT-5m-futures.feather"
+    if frame is None:
+        frame = _ohlcv_frame(["2025-01-01T00:00:00Z", "2025-01-01T00:05:00Z"])
+    frame.to_feather(source)
+    record = adapter.register_feather_file(
+        tmp_path / "catalog",
+        source_root_id="binance-futures",
+        source_root=source_root,
+        relative_path=Path(source.name),
+        exchange="binance",
+        market_type="futures",
+        asset="BTC",
+        exchange_symbol="BTC/USDT:USDT",
+        data_kind="ohlcv",
+        timeframe="5m",
+        source="freqtrade-local",
+    )
+    return record, source_root, source
+
+
+def test_validate_dataset_detects_source_hash_mismatch(tmp_path):
+    module_spec = importlib.util.find_spec("data_engineering.catalog_v3")
+    assert module_spec is not None, "v3 catalog module must exist"
+    catalog = importlib.import_module("data_engineering.catalog_v3")
+    assert hasattr(catalog, "validate_dataset"), "v3 dataset validator must exist"
+    record, source_root, source = _registered_feather(tmp_path)
+    changed = _ohlcv_frame(["2025-01-01T00:00:00Z", "2025-01-01T00:05:00Z"])
+    changed.loc[1, "close"] = 101.0
+    changed.to_feather(source)
+
+    result = catalog.validate_dataset(
+        tmp_path / "catalog",
+        record["manifest"]["dataset_id"],
+        source_roots={"binance-futures": source_root},
+    )
+
+    assert result["status"] == "INVALID"
+    assert "SOURCE_HASH_MISMATCH" in {issue["code"] for issue in result["issues"]}
+
+
+def test_validate_dataset_detects_partition_fingerprint_mismatch(tmp_path):
+    catalog = importlib.import_module("data_engineering.catalog_v3")
+    assert hasattr(catalog, "validate_dataset"), "v3 dataset validator must exist"
+    record, source_root, _ = _registered_feather(tmp_path)
+    manifest = deepcopy(record["manifest"])
+    manifest["partitions"][0]["fingerprint"] = "f" * 64
+    tampered = catalog.register_dataset(tmp_path / "tampered-catalog", manifest)
+
+    result = catalog.validate_dataset(
+        tmp_path / "tampered-catalog",
+        tampered["manifest"]["dataset_id"],
+        source_roots={"binance-futures": source_root},
+    )
+
+    assert result["status"] == "INVALID"
+    assert "PARTITION_FINGERPRINT_MISMATCH" in {issue["code"] for issue in result["issues"]}
 
 
 def test_data_kind_registry_declares_required_contract_fields():

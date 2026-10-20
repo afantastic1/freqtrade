@@ -13,6 +13,7 @@ from importlib.resources import files
 from typing import Any
 
 from jsonschema import Draft202012Validator, FormatChecker
+import pandas as pd
 
 
 _SCHEMA_NAME = "dataset-manifest-v3.schema.json"
@@ -244,3 +245,73 @@ def list_datasets(
         )
     )
     return records
+
+
+def validate_dataset(
+    root: Path, dataset_id: str, *, source_roots: dict[str, Path]
+) -> dict[str, Any]:
+    """Verify the latest registered version against its configured source bytes."""
+    records = [
+        record for record in list_datasets(root)
+        if record["manifest"]["dataset_id"] == dataset_id
+    ]
+    if not records:
+        return {"dataset_id": dataset_id, "manifest": None, "status": "MISSING", "issues": []}
+    referenced = {
+        record["manifest"]["revision"]["previous_manifest_sha256"]
+        for record in records
+        if record["manifest"]["revision"]["previous_manifest_sha256"] is not None
+    }
+    leaves = [record for record in records if record["manifest_sha256"] not in referenced]
+    if len(leaves) != 1:
+        return {"dataset_id": dataset_id, "manifest": None, "status": "INVALID",
+                "issues": [{"code": "INVALID_LINEAGE", "message": "catalog has no unique latest version"}]}
+    latest = leaves[0]
+    manifest = latest["manifest"]
+    issues: list[dict[str, str]] = []
+
+    def issue(code: str, message: str) -> None:
+        issues.append({"code": code, "message": message})
+
+    from .freqtrade_feather import _frame_fingerprint, _safe_source_path, _source_digest
+    from .quality.contracts import validate_observations
+
+    frames = []
+    for index, partition in enumerate(manifest["partitions"]):
+        root_id = partition["source_root_id"]
+        configured_root = source_roots.get(root_id)
+        if configured_root is None:
+            issue("SOURCE_ROOT_MISSING", f"no source root configured for {root_id}")
+            continue
+        try:
+            source_path, _ = _safe_source_path(configured_root, Path(partition["source_path"]))
+            if _source_digest(source_path) != partition["source_sha256"]:
+                issue("SOURCE_HASH_MISMATCH", f"partition {index} source bytes changed")
+                continue
+            frame = pd.read_feather(source_path)
+            dates = pd.to_datetime(frame["date"], utc=True)
+            start = pd.Timestamp(partition["start"])
+            end = pd.Timestamp(partition["end"])
+            part = frame.loc[(dates >= start) & (dates < end)].copy()
+            if len(part) != partition["row_count"]:
+                issue("PARTITION_ROW_COUNT_MISMATCH", f"partition {index} row count changed")
+            if _frame_fingerprint(part) != partition["fingerprint"]:
+                issue("PARTITION_FINGERPRINT_MISMATCH", f"partition {index} observations changed")
+            if not part.empty:
+                frames.append(part)
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            issue("SOURCE_INVALID", f"partition {index}: {exc}")
+
+    if frames:
+        frame = pd.concat(frames, ignore_index=True)
+        quality = validate_observations(
+            frame, data_kind=manifest["data_kind"], timeframe=manifest["timeframe"]
+        )
+        issues.extend(quality["issues"])
+        status = "INVALID" if issues or quality["status"] == "INVALID" else quality["status"]
+    else:
+        quality = {"row_count": 0, "observed_interval": None, "cadence": {},
+                   "status": "MISSING", "issues": []}
+        status = "INVALID" if issues else "MISSING"
+    return {"dataset_id": dataset_id, "manifest": manifest, "status": status,
+            "quality": quality, "issues": issues}
