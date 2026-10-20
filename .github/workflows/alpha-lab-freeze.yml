@@ -17,6 +17,10 @@ on:
       - "tests/test_cross_sectional_fundamental_runner.py"
       - ".opencode/**"
       - ".github/workflows/alpha-lab-freeze.yml"
+      - "notes/statistical_method_audit.md"
+      - "notes/statistical_method_registry.md"
+      - "notes/statistical_freeze_report.md"
+      - "notes/alpha_lab_next_steps.md"
 
   pull_request:
     paths:
@@ -30,6 +34,10 @@ on:
       - ".opencode/**"
       - "docs/alpha_lab/**"
       - ".github/workflows/alpha-lab-freeze.yml"
+      - "notes/statistical_method_audit.md"
+      - "notes/statistical_method_registry.md"
+      - "notes/statistical_freeze_report.md"
+      - "notes/alpha_lab_next_steps.md"
 
 permissions:
   contents: read

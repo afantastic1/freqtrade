@@ -25,6 +25,8 @@
 
 from dataclasses import dataclass, field
 
+from alpha_lab.stats.method_registry import method_entry
+
 DEFAULT_PRACTICAL_THRESHOLDS = {
     # 单位与各自指标一致。取值依据见统计审计报告的"实际意义阈值"一节。
     "auc": 0.005,
@@ -248,6 +250,54 @@ def classify_result(
         reasons.append("EVIDENCE_INCONCLUSIVE")
 
     return Verdict(INCONCLUSIVE, tuple(reasons), primary_metric, detail)
+
+
+def classify_formal_result(
+    assessments: dict[str, MetricAssessment],
+    *,
+    primary_metric: str,
+    method_id: str,
+    stability_ratio: float | None = None,
+    max_abs_spearman: float | None = None,
+    policy: VerdictPolicy | None = None,
+) -> Verdict:
+    """Apply the verdict policy only when a registered inference method is PASS.
+
+    The pure ``classify_result`` remains available for policy analysis and
+    historical sensitivity reports. Formal research entry points must use this
+    wrapper so blocked or unvalidated intervals cannot produce a final label.
+    """
+    verdict = classify_result(
+        assessments,
+        primary_metric=primary_metric,
+        stability_ratio=stability_ratio,
+        max_abs_spearman=max_abs_spearman,
+        policy=policy,
+    )
+    gated = gate_formal_verdict(verdict.as_dict(), method_id=method_id)
+    return Verdict(
+        gated["label"], tuple(gated["reasons"]), primary_metric, gated["detail"]
+    )
+
+
+def gate_formal_verdict(verdict: dict, *, method_id: str) -> dict:
+    """Close a final verdict unless its registered method is PASS for inference."""
+    entry = method_entry(method_id)
+    status = entry["status"] if entry else "UNSUPPORTED"
+    if status == "PASS" and entry["role"] == "inference":
+        return dict(verdict)
+
+    gated = dict(verdict)
+    gated["label"] = INCONCLUSIVE
+    gated["reasons"] = list(dict.fromkeys(
+        [*verdict.get("reasons", []), "INFERENCE_METHOD_NOT_APPROVED"]
+    ))
+    gated["detail"] = dict(verdict.get("detail", {}))
+    gated["detail"].update({
+        "inference_method": method_id,
+        "inference_method_status": status,
+    })
+    return gated
 
 
 def _as_mapping(value) -> dict:

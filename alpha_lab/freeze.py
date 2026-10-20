@@ -7,6 +7,7 @@ import hashlib
 import json
 from pathlib import Path
 
+from alpha_lab.stats.method_registry import REGISTRY_VERSION
 from alpha_lab.version import ENGINE_VERSION, PROTOCOL_VERSION
 
 
@@ -21,6 +22,16 @@ FROZEN_FILES = frozenset({
     "alpha_lab/candidate_cli.py", "alpha_lab/audit_cli.py",
     "alpha_lab/baseline_cli.py", "alpha_lab/regime_cli.py",
     "alpha_lab/non_ohlcv_cli.py", "alpha_lab/execution_cli.py",
+})
+FROZEN_BOUNDARY_FILES = frozenset({
+    ".opencode/agents/alpha-researcher.md",
+    ".opencode/skills/alpha-research/SKILL.md",
+    ".github/CODEOWNERS",
+    ".github/workflows/alpha-lab-freeze.yml",
+    "notes/statistical_method_audit.md",
+    "notes/statistical_method_registry.md",
+    "notes/statistical_freeze_report.md",
+    "notes/alpha_lab_next_steps.md",
 })
 
 
@@ -43,9 +54,14 @@ def build_manifest(root: Path, *, engine_version: str = ENGINE_VERSION) -> dict:
             or relative.startswith(FROZEN_PREFIXES)
         ):
             files[relative] = _sha256(path)
+    for relative in sorted(FROZEN_BOUNDARY_FILES):
+        path = root / relative
+        if path.is_file():
+            files[relative] = _sha256(path)
     return {
         "engine_version": engine_version,
         "protocol_version": PROTOCOL_VERSION,
+        "statistical_registry_version": REGISTRY_VERSION,
         "hash": "sha256",
         "files": files,
     }
@@ -59,6 +75,8 @@ def verify_manifest(root: Path, manifest_path: Path) -> list[str]:
         errors.append("metadata: engine_version")
     if document.get("protocol_version") != PROTOCOL_VERSION:
         errors.append("metadata: protocol_version")
+    if document.get("statistical_registry_version") != REGISTRY_VERSION:
+        errors.append("metadata: statistical_registry_version")
     for relative, wanted in expected.items():
         path = root / relative
         if not path.is_file():
@@ -73,7 +91,7 @@ def verify_manifest(root: Path, manifest_path: Path) -> list[str]:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--manifest", default="alpha_lab/freeze-manifest.json")
+    parser.add_argument("--manifest", default="alpha_lab/freeze-manifest-v1.1.json")
     parser.add_argument("--write", action="store_true")
     args = parser.parse_args(argv)
     root = Path(__file__).resolve().parent.parent

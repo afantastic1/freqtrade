@@ -18,9 +18,11 @@ from alpha_lab.stats.metrics import (
     fast_auc,
     logloss_per_sample,
 )
+from alpha_lab.stats.method_registry import METHOD_REGISTRY, REGISTRY_VERSION
 from alpha_lab.stats.multiple_testing import (
     adjust_pvalues,
     benjamini_hochberg,
+    benjamini_yekutieli,
     holm_bonferroni,
 )
 from alpha_lab.stats.paired_bootstrap import (
@@ -42,6 +44,8 @@ from alpha_lab.stats.verdict import (
     VerdictPolicy,
     classify_result,
     combine_verdicts,
+    classify_formal_result,
+    gate_formal_verdict,
 )
 
 __all__ = [
@@ -52,12 +56,17 @@ __all__ = [
     "EffectiveSampleEstimate",
     "BootstrapResult",
     "MetricAssessment",
+    "METHOD_REGISTRY",
     "Verdict",
     "VerdictPolicy",
+    "REGISTRY_VERSION",
     "adjust_pvalues",
     "benjamini_hochberg",
+    "benjamini_yekutieli",
     "brier_loss_per_sample",
     "classify_result",
+    "classify_formal_result",
+    "gate_formal_verdict",
     "combine_verdicts",
     "estimate_effective_samples",
     "fast_auc",

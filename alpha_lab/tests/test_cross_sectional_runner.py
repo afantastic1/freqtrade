@@ -197,7 +197,7 @@ def test_supported_requires_approved_method_calibration_and_exact_evidence_id(tm
     stored = store.create_decision(**decision, evidence_id=evidence_id)
     assert stored["conclusion"] == "SUPPORTED"
 
-    diagnostic = {**evidence, "inference_status": "DIAGNOSTIC_ONLY"}
+    diagnostic = {**evidence, "inference_status": "BLOCKED"}
     diagnostic_run_id = registry.create_run(
         config_hash="diagnostic-status", config_json="{}"
     )

@@ -22,6 +22,7 @@ from alpha_lab.labels.cross_sectional import (
 from alpha_lab.models.cross_sectional import ridge_predict
 from alpha_lab.research_store import CROSS_SECTIONAL_VERDICT_POLICY_VERSION
 from alpha_lab.stats.multiple_testing import adjust_pvalues
+from alpha_lab.stats.method_registry import REGISTRY_VERSION
 from data_engineering.coverage import preflight_feature_coverage
 from data_engineering.fundamentals import FundamentalDataAdapter
 
@@ -29,7 +30,7 @@ from data_engineering.fundamentals import FundamentalDataAdapter
 ENGINE_VERSION = "1.1.0-dev"
 PROTOCOL_VERSION = "alpha-research-v1.1-fundamental-draft-v1"
 METHOD_VERSION = "cs-time-block-centered-v1"
-INFERENCE_STATUS = "DIAGNOSTIC_ONLY"
+INFERENCE_STATUS = "BLOCKED"
 TRANSFORMS = {"relative_momentum": relative_momentum,
               "relative_volatility": relative_volatility,
               "relative_volume": relative_volume}
@@ -218,13 +219,15 @@ def run_cross_sectional(
                   Path(__file__).parent / "models" / "cross_sectional.py",
                   Path(__file__).parent / "data" / "market_panel.py",
                   Path(__file__).parent / "data" / "universe.py",
-                  Path(__file__).parent / "stats" / "multiple_testing.py"]
+                  Path(__file__).parent / "stats" / "multiple_testing.py",
+                  Path(__file__).parent / "stats" / "method_registry.py"]
     # code_hash = hashlib.sha256(canonical_json({p.name: _sha(p) for p in code_paths}).encode()).hexdigest()
     code_hash = _code_fingerprint(code_paths)
     fingerprint = panel.fingerprint()
     identity = {"engine_version": ENGINE_VERSION, "protocol_version": PROTOCOL_VERSION,
                 "method_version": METHOD_VERSION, "mode": "cross_sectional",
                 "decision_policy_version": CROSS_SECTIONAL_VERDICT_POLICY_VERSION,
+                "statistical_registry_version": REGISTRY_VERSION,
                 "universe_id": universe.universe_id, "universe_hash": universe.universe_hash,
                 "symbols": sorted(config["symbols"]), "timeframe": config["timeframe"],
                 "horizon": config["horizon"], "data_fingerprint": fingerprint,
@@ -284,10 +287,12 @@ def run_cross_sectional(
             for i, name in enumerate(valid_names):
                 results[name]["bootstrap"]["p_holm_within_run"] = adjusted["holm_bonferroni"][i]
                 results[name]["bootstrap"]["p_bh_within_run"] = adjusted["benjamini_hochberg"][i]
+                results[name]["bootstrap"]["p_by_within_run"] = adjusted["benjamini_yekutieli"][i]
         summary = {"run_id": run_id, "mode": "cross_sectional", "status": "completed",
                    "engine_version": ENGINE_VERSION, "protocol_version": PROTOCOL_VERSION,
                    "method_version": METHOD_VERSION, "config_hash": identity_hash,
                    "decision_policy_version": CROSS_SECTIONAL_VERDICT_POLICY_VERSION,
+                   "statistical_registry_version": REGISTRY_VERSION,
                    "data_fingerprint": fingerprint, "candidate_source_hash": feature_source_hash,
                    "feature_implementation_hash": code_hash,
                    "feature_schema_version": feature_provenance["feature_schema_version"],

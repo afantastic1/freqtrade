@@ -48,6 +48,7 @@ from alpha_lab.stats.metrics import (
     logloss_per_sample,
 )
 from alpha_lab.stats.multiple_testing import adjust_pvalues
+from alpha_lab.stats.method_registry import REGISTRY_VERSION
 from alpha_lab.stats.paired_bootstrap import (
     paired_block_bootstrap,
     resolve_block_size,
@@ -62,7 +63,9 @@ from alpha_lab.stats.verdict import (
     MetricAssessment,
     VerdictPolicy,
     classify_result,
+    classify_formal_result,
     combine_verdicts,
+    gate_formal_verdict,
 )
 
 DATA_DIR = Path("user_data/data/binance")
@@ -500,9 +503,10 @@ def finalize(results: list[dict], policy: VerdictPolicy | None = None) -> dict:
         result["adjusted_p_within_direction"] = float(adjusted[position])
         result["p_auc_raw"] = float(raw_p[position])
 
-        incremental = classify_result(
+        incremental = classify_formal_result(
             assessments,
             primary_metric="auc",
+            method_id=METHOD_VERSION,
             stability_ratio=result["stability"].get("positive_ratio"),
             max_abs_spearman=result["redundancy"]["max_abs_spearman"],
             policy=policy,
@@ -523,10 +527,13 @@ def finalize(results: list[dict], policy: VerdictPolicy | None = None) -> dict:
         mechanism = _mechanism_verdict(
             result["mechanism_evidence"], direction_consistent, policy
         )
+        mechanism = gate_formal_verdict(mechanism, method_id=METHOD_VERSION)
         result["direction_consistent"] = direction_consistent
         result["verdict"] = incremental.as_dict()
         result["mechanism_verdict"] = mechanism
-        result["overall_verdict"] = combine_verdicts(incremental, mechanism)
+        result["overall_verdict"] = gate_formal_verdict(
+            combine_verdicts(incremental, mechanism), method_id=METHOD_VERSION
+        )
 
         # 阈值敏感性
         sensitivity = {}
@@ -553,9 +560,10 @@ def finalize(results: list[dict], policy: VerdictPolicy | None = None) -> dict:
                 adjusted_p=float(adjusted[position]),
                 p_two_sided=alt_assessments["auc"].p_two_sided,
             )
-            alt_incremental = classify_result(
+            alt_incremental = classify_formal_result(
                 alt_assessments,
                 primary_metric="auc",
+                method_id=METHOD_VERSION,
                 stability_ratio=result["stability"].get("positive_ratio"),
                 max_abs_spearman=result["redundancy"]["max_abs_spearman"],
                 policy=alt,
@@ -601,6 +609,7 @@ def run_direction_a(
     ]
     payload = finalize(results)
     payload["method_version"] = METHOD_VERSION
+    payload["statistical_registry_version"] = REGISTRY_VERSION
     payload["not_run"] = list(NOT_RUN)
     payload["splits"] = {"train": list(TRAIN), "test": list(TEST)}
     payload["data"] = {"symbol": "BTC/USDT:USDT", "timeframe": "5m",

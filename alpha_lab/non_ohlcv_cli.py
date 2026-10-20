@@ -42,13 +42,16 @@ from alpha_lab.prereg_record import (
 from alpha_lab.stats.audit import _mechanism_verdict, rank_ic_sign_evidence
 from alpha_lab.stats.power import minimum_detectable_effect
 from alpha_lab.stats.multiple_testing import adjust_pvalues
+from alpha_lab.stats.method_registry import REGISTRY_VERSION
 from alpha_lab.stats.rank_ic import bootstrap_rank_ic, spearman_rank_ic
 from alpha_lab.stats.verdict import (
     DEFAULT_PRACTICAL_THRESHOLDS,
     MetricAssessment,
     VerdictPolicy,
     classify_result,
+    classify_formal_result,
     combine_verdicts,
+    gate_formal_verdict,
 )
 
 DATA_DIR = Path("user_data/data/binance")
@@ -468,6 +471,7 @@ def run_direction_b(*, n_boot: int = 1000, random_state: int = 42) -> dict:
 
     payload = finalize(results, policy)
     payload["method_version"] = METHOD_VERSION
+    payload["statistical_registry_version"] = REGISTRY_VERSION
     payload["not_run"] = list(NOT_RUN)
     payload["splits"] = {"train": list(TRAIN), "test": list(TEST)}
     payload["data"] = {
@@ -515,9 +519,10 @@ def finalize(results: list[dict], policy: VerdictPolicy) -> dict:
             adjusted_p=float(adjusted[position]),
             p_two_sided=result["rank_ic"]["p_two_sided"],
         )
-        incremental = classify_result(
+        incremental = classify_formal_result(
             {"rank_ic": assessment},
             primary_metric="rank_ic",
+            method_id=METHOD_VERSION,
             stability_ratio=result["monthly_negative_ratio"]
             if result["setting"]["preregistered_sign"] < 0
             else (
@@ -538,10 +543,13 @@ def finalize(results: list[dict], policy: VerdictPolicy) -> dict:
         mechanism = _mechanism_verdict(
             result["mechanism_evidence"], direction_consistent, policy
         )
+        mechanism = gate_formal_verdict(mechanism, method_id=METHOD_VERSION)
         result["direction_consistent"] = direction_consistent
         result["verdict"] = incremental.as_dict()
         result["mechanism_verdict"] = mechanism
-        result["overall_verdict"] = combine_verdicts(incremental, mechanism)
+        result["overall_verdict"] = gate_formal_verdict(
+            combine_verdicts(incremental, mechanism), method_id=METHOD_VERSION
+        )
 
     return {
         "family_size": len(results),

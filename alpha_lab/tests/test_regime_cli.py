@@ -199,8 +199,8 @@ def _synthetic_result(
     }
 
 
-def test_finalize_applies_bh_and_combines_axes():
-    # A：可分辨为正（阈值 0.005，MDE 0.003）+ 机制同向 -> SUPPORTED
+def test_finalize_applies_bh_and_method_gate_to_both_axes():
+    # 数值证据看似通过，但当前配对 MBB 方法是 LEGACY，正式结论必须关闭。
     supported = _synthetic_result(
         "A-1",
         auc_point=0.02,
@@ -211,7 +211,7 @@ def test_finalize_applies_bh_and_combines_axes():
         monthly_difference=0.02,
         monthly_negative_ratio=0.1,
     )
-    # B：可分辨为负（有实际意义的负增量）-> REJECTED
+    # 有害方向也不能由未获准的推断方法正式拒绝。
     harmful = _synthetic_result(
         "A-2",
         auc_point=-0.02,
@@ -225,10 +225,12 @@ def test_finalize_applies_bh_and_combines_axes():
     payload = regime_cli.finalize([supported, harmful], VerdictPolicy())
 
     assert payload["family_size"] == 2
-    assert supported["verdict"]["label"] == "SUPPORTED"
-    assert supported["overall_verdict"]["label"] == "SUPPORTED"
-    assert harmful["verdict"]["label"] == "REJECTED"
-    assert harmful["overall_verdict"]["label"] == "REJECTED"
+    assert supported["verdict"]["label"] == "INCONCLUSIVE"
+    assert supported["overall_verdict"]["label"] == "INCONCLUSIVE"
+    assert harmful["verdict"]["label"] == "INCONCLUSIVE"
+    assert harmful["overall_verdict"]["label"] == "INCONCLUSIVE"
+    assert "INFERENCE_METHOD_NOT_APPROVED" in supported["overall_verdict"]["reasons"]
+    assert supported["mechanism_verdict"]["label"] == "INCONCLUSIVE"
     # BH 校正必须不小于原始 p
     for result in payload["results"]:
         assert result["adjusted_p_within_direction"] >= result["p_auc_raw"] - 1e-12

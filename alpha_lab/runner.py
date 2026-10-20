@@ -25,7 +25,12 @@ from alpha_lab.validation.factor_validator import FactorValidator
 from alpha_lab.evaluation.incremental import evaluate_incremental
 from alpha_lab.evaluation.evidence import build_evidence_report
 from alpha_lab.research_store import ResearchStore
-from alpha_lab.version import ENGINE_VERSION, PROTOCOL_VERSION
+from alpha_lab.stats.method_registry import REGISTRY_VERSION
+from alpha_lab.version import (
+    ENGINE_VERSION,
+    PROTOCOL_VERSION,
+    STATISTICAL_METHOD_VERSION,
+)
 
 DATA_DIR = Path("user_data/data/binance")
 OUTPUT_ROOT = Path("user_data/research/alpha_lab/runs")
@@ -45,6 +50,12 @@ EVALUATION_CODE_PATHS = (
     Path(__file__).parent / "models" / "evaluator.py",
     Path(__file__).parent / "validation" / "walk_forward.py",
     Path(__file__).parent / "labels" / "forward_returns.py",
+    Path(__file__).parent / "stats" / "method_registry.py",
+    Path(__file__).parent / "stats" / "verdict.py",
+    Path(__file__).parent / "stats" / "multiple_testing.py",
+    Path(__file__).parent / "stats" / "paired_bootstrap.py",
+    Path(__file__).parent / "stats" / "rank_ic.py",
+    Path(__file__).parent / "stats" / "effective_samples.py",
 )
 
 
@@ -518,6 +529,10 @@ def _execute_experiment(
 
     summary = {
         "run_id": run_id,
+        "engine_version": ENGINE_VERSION,
+        "protocol_version": PROTOCOL_VERSION,
+        "statistical_registry_version": REGISTRY_VERSION,
+        "statistical_method_version": STATISTICAL_METHOD_VERSION,
         "config_hash": config_hash,
         "status": "completed",
         "symbol": config.symbol,
@@ -620,6 +635,7 @@ def run_experiment(config_path: str | Path,
         raw["research_identity"] = {
             "engine_version": ENGINE_VERSION,
             "protocol_version": PROTOCOL_VERSION,
+            "statistical_registry_version": REGISTRY_VERSION,
             "data": data_identity,
             "label_version": LABEL_VERSION,
             "evaluation_code_version": code_version,
@@ -705,6 +721,7 @@ def run_experiment(config_path: str | Path,
                 "manifest_version": 1,
                 "engine_version": ENGINE_VERSION,
                 "protocol_version": PROTOCOL_VERSION,
+                "statistical_registry_version": REGISTRY_VERSION,
                 "run_id": run_id,
                 "config_hash": config_hash,
                 "config": raw,

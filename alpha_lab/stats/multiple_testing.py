@@ -17,6 +17,7 @@
 from math import comb
 
 import numpy as np
+from scipy.stats import false_discovery_control
 
 
 def two_sided_binomial_p(successes: int, trials: int, p: float = 0.5) -> float:
@@ -81,21 +82,15 @@ def holm_bonferroni(pvalues) -> np.ndarray:
 
 
 def benjamini_hochberg(pvalues) -> np.ndarray:
-    """Benjamini–Hochberg 调整 p 值（FDR）。"""
+    """Benjamini–Hochberg FDR 调整；计算委托给 SciPy。"""
     p = _validate(pvalues)
-    m = p.size
+    return np.asarray(false_discovery_control(p, method="bh"), dtype=float)
 
-    order = np.argsort(p, kind="mergesort")
-    ranked = p[order]
 
-    # 反向累积最小值
-    scaled = ranked * m / np.arange(1, m + 1)
-    reversed_min = np.minimum.accumulate(scaled[::-1])[::-1]
-    adjusted_sorted = np.clip(reversed_min, 0.0, 1.0)
-
-    adjusted = np.empty(m, dtype=float)
-    adjusted[order] = adjusted_sorted
-    return adjusted
+def benjamini_yekutieli(pvalues) -> np.ndarray:
+    """Benjamini–Yekutieli FDR adjustment for arbitrary p-value dependence."""
+    p = _validate(pvalues)
+    return np.asarray(false_discovery_control(p, method="by"), dtype=float)
 
 
 def adjust_pvalues(pvalues) -> dict:
@@ -110,4 +105,5 @@ def adjust_pvalues(pvalues) -> dict:
         "raw": [float(v) for v in p],
         "holm_bonferroni": [float(v) for v in holm],
         "benjamini_hochberg": [float(v) for v in bh],
+        "benjamini_yekutieli": [float(v) for v in benjamini_yekutieli(p)],
     }

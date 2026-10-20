@@ -18,6 +18,7 @@ from alpha_lab.stats import (
     VerdictPolicy,
     adjust_pvalues,
     benjamini_hochberg,
+    benjamini_yekutieli,
     brier_loss_per_sample,
     classify_result,
     combine_verdicts,
@@ -281,7 +282,7 @@ def test_holm_and_benjamini_hochberg_known_values():
 def test_adjustments_are_monotone_in_rank_and_never_below_raw():
     p = [0.001, 0.02, 0.2, 0.5, 0.9]
 
-    for adjusted in (holm_bonferroni(p), benjamini_hochberg(p)):
+    for adjusted in (holm_bonferroni(p), benjamini_hochberg(p), benjamini_yekutieli(p)):
         assert np.all(adjusted >= np.asarray(p) - 1e-12)
         assert np.all(adjusted <= 1.0)
         order = np.argsort(p)
@@ -295,6 +296,21 @@ def test_adjust_pvalues_rejects_invalid():
         adjust_pvalues([0.1, 1.5])
     with pytest.raises(ValueError):
         adjust_pvalues([0.1, np.nan])
+
+
+def test_bh_and_by_adjustments_match_scipy_reference():
+    from scipy.stats import false_discovery_control
+
+    p = np.array([0.04, 0.001, 0.04, 0.2, 0.9])
+    np.testing.assert_allclose(
+        benjamini_hochberg(p), false_discovery_control(p, method="bh"), rtol=0, atol=0
+    )
+    np.testing.assert_allclose(
+        benjamini_yekutieli(p), false_discovery_control(p, method="by"), rtol=0, atol=0
+    )
+    assert adjust_pvalues(p)["benjamini_yekutieli"] == pytest.approx(
+        false_discovery_control(p, method="by")
+    )
 
 
 def test_two_sided_binomial_p_is_symmetric_in_both_tails():

@@ -23,6 +23,7 @@ import pandas as pd
 from alpha_lab.stats.effective_samples import estimate_effective_samples
 from alpha_lab.stats.metrics import brier_loss_per_sample, logloss_per_sample
 from alpha_lab.stats.multiple_testing import adjust_pvalues, two_sided_binomial_p
+from alpha_lab.stats.method_registry import REGISTRY_VERSION
 from alpha_lab.stats.paired_bootstrap import (
     paired_block_bootstrap,
     resolve_block_size,
@@ -36,8 +37,11 @@ from alpha_lab.stats.verdict import (
     MetricAssessment,
     VerdictPolicy,
     classify_result,
+    classify_formal_result,
     combine_verdicts,
+    gate_formal_verdict,
 )
+from alpha_lab.version import STATISTICAL_METHOD_VERSION
 
 PRIMARY_METRIC = "auc"
 SECONDARY_METRICS = ("logloss", "brier")
@@ -378,6 +382,8 @@ def audit_run(
 
     return {
         "run_id": summary.get("run_id", run_dir.name),
+        "method_version": STATISTICAL_METHOD_VERSION,
+        "statistical_registry_version": REGISTRY_VERSION,
         "run_dir": str(run_dir),
         "candidate": candidate.get("name"),
         "timeframe": timeframe,
@@ -525,20 +531,25 @@ def audit_campaign(
             for name, item in audit["metrics"].items()
         }
 
-        verdict = classify_result(
+        verdict = classify_formal_result(
             assessments,
             primary_metric=PRIMARY_METRIC,
+            method_id=STATISTICAL_METHOD_VERSION,
             stability_ratio=audit["stability"].get("positive_ratio"),
             max_abs_spearman=audit["redundancy"]["max_abs_spearman"],
             policy=policy,
         )
         audit["verdict"] = verdict.as_dict()
 
-        audit["mechanism_verdict"] = _mechanism_verdict(
-            audit["rank_ic_evidence"], audit["direction_consistent"], policy
+        audit["mechanism_verdict"] = gate_formal_verdict(
+            _mechanism_verdict(
+                audit["rank_ic_evidence"], audit["direction_consistent"], policy
+            ),
+            method_id=STATISTICAL_METHOD_VERSION,
         )
-        audit["overall_verdict"] = combine_verdicts(
-            audit["verdict"], audit["mechanism_verdict"]
+        audit["overall_verdict"] = gate_formal_verdict(
+            combine_verdicts(audit["verdict"], audit["mechanism_verdict"]),
+            method_id=STATISTICAL_METHOD_VERSION,
         )
 
     # --- 实际意义阈值敏感性：判定不应由阈值的第三位小数决定 ---
@@ -571,9 +582,10 @@ def audit_campaign(
                 )
                 for name, item in audit["metrics"].items()
             }
-            incremental = classify_result(
+            incremental = classify_formal_result(
                 assessments,
                 primary_metric=PRIMARY_METRIC,
+                method_id=STATISTICAL_METHOD_VERSION,
                 stability_ratio=audit["stability"].get("positive_ratio"),
                 max_abs_spearman=audit["redundancy"]["max_abs_spearman"],
                 policy=alt_policy,
