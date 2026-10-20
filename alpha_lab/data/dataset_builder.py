@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from pathlib import Path
 from dataclasses import asdict
 
@@ -16,6 +17,8 @@ from .build_products import (
     DatasetBuildReportV1, DatasetBuildResultV2, EvaluatorLabelsV1, WorkerInputV2,
 )
 from .dataset import MarketData
+from .market_panel import MarketPanel
+from alpha_lab.labels.cross_sectional import cross_sectional_labels
 from .dataset_manifest import publish_dataset
 from .source_resolver import DatasetSourceResolver
 from .temporal_plan import DatasetBuildOptionsV1, build_temporal_plan, enforce_required_slots
@@ -45,7 +48,11 @@ class DatasetBuilderV2:
             raise ValueError("primary_data_type must identify a requested OHLCV source")
         if request.mode == "time_series" and len(request.symbols) != 1:
             raise ValueError("time_series build requires exactly one symbol")
+        if request.mode == "cross_sectional" and universe is None:
+            raise ValueError("cross_sectional build requires an explicit universe")
         sources = self.resolver.resolve(request, plan, options)
+        if request.mode == "cross_sectional":
+            return self._build_cross_sectional(request, options, plan, sources, primary, universe)
         symbol = request.symbols[0]
         primary_source = next((source for source in sources if source.identity == self.resolver._expected_identity(symbol, primary, request.timeframe)), None)
         if primary_source is None:
@@ -99,6 +106,94 @@ class DatasetBuilderV2:
         issues = tuple({"code": "MISSING_PRIMARY_SLOTS", "intervals": [stamp.isoformat() for stamp in missing_slots]}
                        for _ in [0] if len(missing_slots))
         report = DatasetBuildReportV1(sources=source_records, issues=issues, quality={"worker_rows": len(worker.frame), "label_rows": len(evaluator.frame), "missing_primary_slots": len(missing_slots)})
+        result = DatasetBuildResultV2(worker, evaluator, report, manifest)
+        artifact = publish_dataset(result, self.output_root)
+        return DatasetBuildResultV2(worker, evaluator, report, manifest, artifact)
+
+    def _build_cross_sectional(self, request, options, plan, sources, primary, universe):
+        step = pd.Timedelta(seconds=timeframe_to_seconds(request.timeframe))
+        assets = []
+        by_symbol = {}
+        for symbol in request.symbols:
+            identity = self.resolver._expected_identity(symbol, primary, request.timeframe)
+            source = next((item for item in sources if item.identity == identity), None)
+            if source is None:
+                raise ValueError(f"primary market source missing for {symbol}")
+            if source.availability.pit_status.eq("UNVERIFIED").any():
+                raise ValueError("UNVERIFIED availability cannot enter worker input")
+            frame = source.availability.copy(deep=True)
+            frame["open_time"] = pd.to_datetime(frame.date, utc=True)
+            frame["close_time"] = frame.open_time + step
+            frame["available_time"] = pd.to_datetime(frame.available_time, utc=True)
+            market = MarketData(symbol, request.timeframe, frame[[
+                "open_time", "close_time", "available_time", "open", "high", "low", "close", "volume",
+            ]].sort_values("open_time").reset_index(drop=True))
+            assets.append(market)
+            by_symbol[symbol] = source
+        panel = MarketPanel.from_assets(assets)
+        expected_slots = pd.date_range(plan.warmup_start, plan.label_extension_end, freq=step, inclusive="left")
+        for symbol in request.symbols:
+            actual = panel.frame.xs(symbol, level="symbol").index
+            enforce_required_slots(expected_slots, pd.DatetimeIndex(actual), options.missing_data_policy)
+        study_mask = ((panel.frame.index.get_level_values("open_time") >= pd.Timestamp(request.start))
+                      & (panel.frame.index.get_level_values("open_time") < pd.Timestamp(request.end)))
+        worker_mask = ((panel.frame.index.get_level_values("open_time") >= pd.Timestamp(plan.warmup_start))
+                       & (panel.frame.index.get_level_values("open_time") < pd.Timestamp(request.end)))
+        membership = universe.membership(panel)
+        if not membership.index.equals(panel.frame.index) or membership.isna().any():
+            raise ValueError("universe membership must align to market panel")
+        missing_membership_symbols = []
+        if type(universe).__name__ == "HistoricalUniverse":
+            known = set(universe.listings.symbol)
+            missing_membership_symbols = sorted(set(request.symbols) - known)
+        if missing_membership_symbols and options.missing_data_policy == "reject":
+            raise ValueError("missing point-in-time membership history")
+        labels = cross_sectional_labels(
+            panel, membership, timeframe=request.timeframe, horizon=request.label_horizon_bars
+        )
+        label_availability = labels["label_available_time"].where(membership.astype(bool))
+        max_availability = label_availability.groupby(level="open_time").transform("max")
+        labels["label_available_time"] = max_availability.where(labels.relative_return.notna())
+        labels = labels.loc[study_mask].copy()
+        labels["label_value"] = labels["relative_return"]
+        labels["label_end_time"] = pd.Series(labels.index.get_level_values("open_time"), index=labels.index) + request.label_horizon_bars * step
+        labels.loc[~labels.label_valid if "label_valid" in labels else labels.relative_return.isna(), "label_end_time"] = pd.NaT
+        labels["label_valid"] = labels.label_value.notna()
+        labels["validity_reason"] = labels.label_valid.map({True: "VALID", False: "INSUFFICIENT_OR_GAPPED_HORIZON_OR_MEMBERSHIP"})
+        if options.missing_data_policy == "reject" and not labels.label_valid.all():
+            raise ValueError("missing or invalid cross-sectional labels under reject policy")
+        worker_frame = panel.frame.loc[worker_mask].copy()
+        worker_frame["eligible"] = membership.loc[worker_frame.index]
+        worker_frame["decision_time"] = worker_frame.available_time
+        worker_frame = worker_frame.reset_index()
+        worker = WorkerInputV2(worker_frame, ("available_time",))
+        evaluator = EvaluatorLabelsV1(labels.reset_index())
+        source_records = tuple({
+            "dataset_id": source.identity.dataset_id(), "identity": asdict(source.identity),
+            "manifest_sha256": source.manifest_sha256, "quality": source.quality,
+        } for source in sources)
+        manifest = {
+            "schema_version": "alpha-lab-dataset-manifest-v1",
+            "request": json.loads(request.canonical_json()), "request_sha256": request.sha256(),
+            "policy_id": request.campaign_id, "policy_version": request.policy_version,
+            "policy_sha256": request.campaign_policy_sha256,
+            "split": request.split, "study_bounds": [request.start.isoformat(), request.end.isoformat()],
+            "warmup_bounds": [plan.warmup_start.isoformat(), plan.warmup_end.isoformat()],
+            "label_extension_bounds": [plan.label_extension_start.isoformat(), plan.label_extension_end.isoformat()],
+            "missing_data_policy": options.missing_data_policy,
+            "source_pins": {source.identity.dataset_id(): source.manifest_sha256 for source in sources},
+            "builder_version": "dataset-builder-v2", "mode": request.mode,
+            "timeframe": request.timeframe, "symbols": list(request.symbols),
+            "universe_hash": universe.universe_hash,
+            "membership_sha256": hashlib.sha256(membership.astype("uint8").to_numpy().tobytes()).hexdigest(),
+            "survivorship_caveat": "fixed universe uses current membership" if type(universe).__name__ == "FixedUniverse" else None,
+        }
+        cs_issues = (({"code": "MISSING_MEMBERSHIP_HISTORY", "symbols": missing_membership_symbols},)
+                     if missing_membership_symbols else ())
+        report = DatasetBuildReportV1(sources=source_records, issues=cs_issues, quality={
+            "worker_rows": len(worker.frame), "label_rows": len(evaluator.frame),
+            "membership_count": int(membership.loc[study_mask].sum()),
+        })
         result = DatasetBuildResultV2(worker, evaluator, report, manifest)
         artifact = publish_dataset(result, self.output_root)
         return DatasetBuildResultV2(worker, evaluator, report, manifest, artifact)
