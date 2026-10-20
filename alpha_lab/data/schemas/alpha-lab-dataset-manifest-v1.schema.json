@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://freqtrade.local/schemas/alpha-lab-dataset-manifest-v1.schema.json",
+  "title": "Alpha Lab Dataset Manifest v1",
+  "type": "object",
+  "required": ["schema_version", "build_fingerprint", "created_at", "products"],
+  "properties": {
+    "schema_version": {"const": "alpha-lab-dataset-manifest-v1"},
+    "build_fingerprint": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "products": {"type": "object", "required": ["worker", "labels", "report"], "additionalProperties": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}
+  },
+  "additionalProperties": true
+}
