@@ -1,6 +1,10 @@
 import importlib.util
+import importlib
+from copy import deepcopy
 import json
 from importlib.resources import files
+
+import pytest
 
 from jsonschema import Draft202012Validator
 
@@ -37,6 +41,12 @@ def _v3_manifest(*, data_kind="ohlcv", market_type="futures", timeframe="5m"):
         ],
         "revision": {"previous_manifest_sha256": None, "reason": "initial registration"},
     }
+
+
+def _v3_catalog_module():
+    module_spec = importlib.util.find_spec("data_engineering.catalog_v3")
+    assert module_spec is not None, "v3 catalog module must exist"
+    return importlib.import_module("data_engineering.catalog_v3")
 
 
 def test_data_kind_registry_declares_required_contract_fields():
@@ -109,3 +119,88 @@ def test_v3_schema_keeps_v1_v2_schema_resources_unchanged_and_available():
     v2 = json.loads(schemas.joinpath("catalog-manifest-v2.schema.json").read_text())
     assert v1["properties"]["schema_version"]["const"] == "data-catalog-v1"
     assert v2["properties"]["schema_version"]["const"] == "data-catalog-v2"
+
+
+def test_validate_v3_manifest_accepts_v3_without_changing_legacy_dispatch():
+    from data_engineering.catalog import validate_manifest
+    catalog = _v3_catalog_module()
+
+    catalog.validate_v3_manifest(_v3_manifest())
+    with pytest.raises(ValueError, match="unsupported catalog manifest schema"):
+        validate_manifest(_v3_manifest())
+
+
+def test_validate_v3_manifest_rejects_empty_or_reversed_partition_interval():
+    catalog = _v3_catalog_module()
+
+    manifest = _v3_manifest()
+    manifest["partitions"][0]["end"] = "2024-12-31T00:00:00Z"
+    with pytest.raises(ValueError, match="partition interval"):
+        catalog.validate_v3_manifest(manifest)
+
+
+def test_register_dataset_is_idempotent_when_registration_time_changes(tmp_path):
+    catalog = _v3_catalog_module()
+
+    manifest = _v3_manifest()
+    first = catalog.register_dataset(tmp_path, manifest)
+    changed_timestamp = deepcopy(manifest)
+    changed_timestamp["registered_at"] = "2026-10-21T00:00:00Z"
+    second = catalog.register_dataset(tmp_path, changed_timestamp)
+
+    assert first["manifest_sha256"] == second["manifest_sha256"]
+    assert first["manifest"] == second["manifest"]
+    assert len(list((tmp_path / "catalog-v3" / "datasets" / manifest["dataset_id"]).glob("*.json"))) == 1
+
+
+def test_register_dataset_appends_revised_snapshot_and_preserves_prior_version(tmp_path):
+    catalog = _v3_catalog_module()
+
+    first_manifest = _v3_manifest()
+    first = catalog.register_dataset(tmp_path, first_manifest)
+    second_manifest = deepcopy(first_manifest)
+    second_manifest["registered_at"] = "2026-10-21T00:00:00Z"
+    second_manifest["partitions"][0]["source_sha256"] = "c" * 64
+    second_manifest["partitions"][0]["fingerprint"] = "d" * 64
+    second_manifest["revision"]["previous_manifest_sha256"] = first["manifest_sha256"]
+    second_manifest["revision"]["reason"] = "source correction"
+    second = catalog.register_dataset(tmp_path, second_manifest)
+
+    versions = catalog.list_datasets(tmp_path)
+    version_files = list(
+        (tmp_path / "catalog-v3" / "datasets" / first_manifest["dataset_id"]).glob("*.json")
+    )
+    assert first["manifest_sha256"] != second["manifest_sha256"]
+    assert len(versions) == 2
+    assert len(version_files) == 2
+    assert second["manifest"]["revision"]["previous_manifest_sha256"] == first["manifest_sha256"]
+
+
+def test_register_dataset_rejects_revision_not_linked_to_previous_version(tmp_path):
+    catalog = _v3_catalog_module()
+
+    first_manifest = _v3_manifest()
+    catalog.register_dataset(tmp_path, first_manifest)
+    changed = deepcopy(first_manifest)
+    changed["partitions"][0]["fingerprint"] = "e" * 64
+    changed["revision"]["previous_manifest_sha256"] = "f" * 64
+
+    with pytest.raises(ValueError, match="revision does not reference latest manifest"):
+        catalog.register_dataset(tmp_path, changed)
+
+
+def test_list_datasets_returns_stable_order_and_applies_identity_filters(tmp_path):
+    catalog = _v3_catalog_module()
+
+    for asset in ("ETH", "BTC"):
+        manifest = _v3_manifest()
+        manifest["asset"] = asset
+        manifest["dataset_id"] = f"binance-futures-{asset.lower()}-ohlcv"
+        manifest["exchange_symbol"] = f"{asset}/USDT:USDT"
+        catalog.register_dataset(tmp_path, manifest)
+
+    listed = catalog.list_datasets(tmp_path)
+    btc = catalog.list_datasets(tmp_path, asset="BTC", market_type="futures", data_kind="ohlcv")
+    assert [item["manifest"]["asset"] for item in listed] == ["BTC", "ETH"]
+    assert len(btc) == 1
+    assert btc[0]["manifest"]["dataset_id"] == "binance-futures-btc-ohlcv"
