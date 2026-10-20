@@ -1,8 +1,8 @@
 {
   "files": {
     ".github/CODEOWNERS": "91201f05cfa9d5fc4b88ab0fa1cc40a5fa133dc09328da9ef6175723f190caa0",
-    ".github/workflows/alpha-lab-freeze.yml": "5930701b5cbb8e58d8fcbb324bf19cd637c60c9517554b9a5a64acc1e5eca0eb",
-    ".github/workflows/alpha-lab-python-service.yml": "1391a0c049c0f22b4a0e36b35cb13b0f592081d1760eba33d750be6f60e770e4",
+    ".github/workflows/alpha-lab-freeze.yml": "94c044c43a7bc6c1ed145e2444346602dc860c1798edb021c14bb028e929120f",
+    ".github/workflows/alpha-lab-python-service.yml": "7e0999cd1010aa44b3c6b5d917c64f0d779182519a07e9f00846d4651c9dabd3",
     "scripts/alpha_lab_admission_gate.py": "04fc6f1564a0ed32ec73a06adbe688b6dd2c514a59c27d22f2749e005d464332"
   },
   "hash": "sha256",

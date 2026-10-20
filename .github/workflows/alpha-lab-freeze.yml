@@ -102,5 +102,14 @@ jobs:
         with:
           python-version: "3.13"
 
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Install locked governance environment
+        env:
+          UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/alpha-lab-governance-venv
+        run: uv sync --project alpha_lab_service --locked --group test
+
       - name: Verify freeze manifest
-        run: python -m alpha_lab_service.governance
+        env:
+          UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/alpha-lab-governance-venv
+        run: uv run --project alpha_lab_service --locked python -m alpha_lab_service.governance

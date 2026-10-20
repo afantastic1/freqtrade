@@ -1,7 +1,7 @@
 {
   "files": {
     ".github/CODEOWNERS": "91201f05cfa9d5fc4b88ab0fa1cc40a5fa133dc09328da9ef6175723f190caa0",
-    ".github/workflows/alpha-lab-python-service.yml": "1391a0c049c0f22b4a0e36b35cb13b0f592081d1760eba33d750be6f60e770e4",
+    ".github/workflows/alpha-lab-python-service.yml": "7e0999cd1010aa44b3c6b5d917c64f0d779182519a07e9f00846d4651c9dabd3",
     "alpha_lab_service/__init__.py": "9203fe0ac539d1e3f6a07573ebe97ee0a2fab78845b7873b4b05a1a904a07387",
     "alpha_lab_service/auth.py": "2243050c73f31f305a3a60a2062ba118079b16b5c2f76b0639a4b323f99b1e3b",
     "alpha_lab_service/broker_client.py": "cced9879a6d2f0514e0b5962d001d01efa2b178a1241052f64bec561914a069a",
@@ -25,7 +25,7 @@
     "alpha_lab_service/tests/test_ci_protection.py": "20b44c31dd481660fcb03b3da07819319bb2a8131bd4c19f03bc2bd3ab11d6d1",
     "alpha_lab_service/tests/test_end_to_end.py": "f8219365aba580875441b5cd629c359b270c373bdcef72c5606eb048cae27e58",
     "alpha_lab_service/tests/test_evaluator.py": "bd33db6e77200e67605e50f001458cf29c69a58842e3d2e135b48329cbe52067",
-    "alpha_lab_service/tests/test_manifest.py": "14e765fdc11f98097c9aa399ee4d5da75c467bfd10e348b2cff2c16ba6ec2627",
+    "alpha_lab_service/tests/test_manifest.py": "774ae1bff9b35bd8270774825d1d94de5a32e8fb22f45e2aa926f02513a23da9",
     "alpha_lab_service/tests/test_mcp_tools.py": "d7534d2d3ef375aad7bc3b71d9682034a5c49cf98f49163ad631167521311c84",
     "alpha_lab_service/tests/test_protocol.py": "90d91523493be1b6082eb1918870f7e3fc829cf9a699ed5f7c0869f9aecbc671",
     "alpha_lab_service/tests/test_store.py": "0f63d7184ba11ef2675f30a70e976d128fd4e12eb647be3718adfca85cb907f5",

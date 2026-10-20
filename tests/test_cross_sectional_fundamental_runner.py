@@ -115,7 +115,7 @@ def test_runner_loads_only_pinned_strict_pit_features_and_binds_identity(tmp_pat
     assert first["feature_coverage"]["feature_coverage"][
         "fundamental__token__CapMrktEstUSD"]["coverage"] == 1 / 5
     assert first["feature_coverage"]["status"] == "NOT_EVALUABLE"
-    assert first["inference_status"] == "DIAGNOSTIC_ONLY"
+    assert first["inference_status"] == "BLOCKED"
     assert all(value["status"] == "NOT_EVALUABLE" for value in first["results"].values())
 
     changed_config = copy.deepcopy(config)

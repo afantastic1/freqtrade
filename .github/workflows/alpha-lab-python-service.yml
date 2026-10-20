@@ -30,6 +30,8 @@ jobs:
   service-security:
     name: Protocol, descriptive E2E and Worker isolation
     runs-on: ubuntu-latest
+    env:
+      UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/alpha-lab-service-venv
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

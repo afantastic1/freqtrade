@@ -1,5 +1,6 @@
 import hashlib
 import json
+import shutil
 from pathlib import Path
 
 from alpha_lab_service.manifest import build_manifest, verify_manifest
@@ -26,6 +27,26 @@ def test_service_manifest_detects_modified_and_untracked_protected_files(tmp_pat
     (tmp_path / "alpha_lab_service/worker_extra.py").write_text("untracked\n")
     errors = verify_manifest(tmp_path, manifest_path)
     assert any("untracked protected file" in error for error in errors)
+
+
+def test_service_manifest_detects_tampering_of_real_protected_source(tmp_path):
+    manifest_path = ROOT / "alpha_lab_service/protocol-manifest-v1.json"
+    document = json.loads(manifest_path.read_text(encoding="utf-8"))
+    for relative in document["files"]:
+        source = ROOT / relative
+        target = tmp_path / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, target)
+
+    copied_manifest = tmp_path / "alpha_lab_service/protocol-manifest-v1.json"
+    shutil.copyfile(manifest_path, copied_manifest)
+    assert verify_manifest(tmp_path, copied_manifest) == []
+
+    real_source_copy = tmp_path / "alpha_lab_service/protocol.py"
+    real_source_copy.write_bytes(real_source_copy.read_bytes() + b"\n# tampered\n")
+    assert "changed: alpha_lab_service/protocol.py" in verify_manifest(
+        tmp_path, copied_manifest
+    )
 
 
 def test_governance_manifest_covers_codeowners_and_active_workflow(tmp_path):
