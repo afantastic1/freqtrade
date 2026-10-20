@@ -4,7 +4,7 @@ import json
 import hashlib
 
 import pytest
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator, FormatChecker, ValidationError
 
 import alpha_lab_contracts.campaign_policy_v1 as policy_module
 from alpha_lab_contracts.campaign_policy_v1 import (
@@ -91,6 +91,14 @@ def test_policy_schema_accepts_policy_fixture() -> None:
     schema = json.loads((__import__("pathlib").Path(__file__).parents[1] / "schemas/campaign-policy-v1.schema.json").read_text())
     Draft202012Validator.check_schema(schema)
     Draft202012Validator(schema).validate(with_hash(policy_dict()))
+
+
+def test_policy_schema_rejects_unknown_utc_offset() -> None:
+    schema = json.loads((__import__("pathlib").Path(__file__).parents[1] / "schemas/campaign-policy-v1.schema.json").read_text())
+    raw = with_hash(policy_dict())
+    raw["splits"]["discovery"]["start"] = "2023-01-01T00:00:00-00:00"  # type: ignore[index]
+    with pytest.raises(ValidationError):
+        Draft202012Validator(schema, format_checker=FormatChecker()).validate(raw)
 
 
 @pytest.mark.parametrize("mutation", ["overlap", "reversed", "missing_split", "unknown_key", "bad_hash", "malformed_timestamp"])

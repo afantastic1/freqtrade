@@ -102,9 +102,10 @@ def test_request_schema_accepts_example_shape() -> None:
     Draft202012Validator(schema).validate(request_raw())
 
 
-def test_request_schema_rejects_malformed_timestamp_with_format_checker() -> None:
+@pytest.mark.parametrize("timestamp", ["2023-02-01T01:00:00+00:99", "2023-02-01T01:00:00-00:00"])
+def test_request_schema_rejects_malformed_timestamp_with_format_checker(timestamp: str) -> None:
     schema = json.loads((Path(__file__).parents[1] / "schemas/research-request-v2.schema.json").read_text())
-    raw = request_raw(start="2023-02-01T01:00:00+00:99")
+    raw = request_raw(start=timestamp)
     with pytest.raises(Exception):
         Draft202012Validator(schema, format_checker=FormatChecker()).validate(raw)
 
