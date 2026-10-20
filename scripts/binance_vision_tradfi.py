@@ -48,6 +48,24 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+try:
+    from data_engineering.sources.vision_archive import (
+        archive_url as _shared_archive_url,
+        checksum_expected as _shared_checksum_expected,
+        months_from_entries as _shared_months_from_entries,
+        parse_kline_zip as _shared_parse_kline_zip,
+        s3_list_prefixes as _shared_s3_list_prefixes,
+    )
+except ModuleNotFoundError:  # Direct script invocation from a source checkout.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from data_engineering.sources.vision_archive import (
+        archive_url as _shared_archive_url,
+        checksum_expected as _shared_checksum_expected,
+        months_from_entries as _shared_months_from_entries,
+        parse_kline_zip as _shared_parse_kline_zip,
+        s3_list_prefixes as _shared_s3_list_prefixes,
+    )
+
 BASE = "https://data.binance.vision/data/futures/um/monthly/klines"
 S3_BUCKET_LIST = "https://s3-ap-northeast-1.amazonaws.com/data.binance.vision"
 S3_ROOT_PREFIX = "data/futures/um/monthly/klines/"
@@ -163,42 +181,9 @@ def s3_list_prefixes(prefix: str, *, max_pages: int = 8) -> list[str]:
     Anonymous S3 bucket listing is an ancillary interface, not the FAPI endpoint.
     This operation is opt-in (--discover) and fails closed if not permitted.
     """
-    seen = set()
-    marker = ""
-    for page in range(max_pages):
-        params = {"delimiter": "/", "prefix": prefix, "max-keys": "1000"}
-        if marker:
-            params["marker"] = marker
-        url = S3_BUCKET_LIST + "?" + urllib.parse.urlencode(params)
-        status, body = fetch(url, method="GET", retries=1, timeout=30)
-        if status != 200 or not body:
-            raise RuntimeError(f"public S3 listing unavailable: HTTP {status}")
-        if len(body) > 4 * 1024 * 1024:
-            raise ValueError("oversized discovery XML")
-        try:
-            root = ET.fromstring(body)
-        except ET.ParseError as exc:
-            raise ValueError("S3 listing returned invalid XML") from exc
-        if not root.tag.endswith("ListBucketResult"):
-            raise ValueError("S3 listing returned an unexpected document")
-        prefixes = [x.text for x in root.findall(".//{*}CommonPrefixes/{*}Prefix") if x.text]
-        keys = [x.text for x in root.findall(".//{*}Contents/{*}Key") if x.text]
-        for item in prefixes + keys:
-            if not item.startswith(prefix):
-                raise ValueError("S3 listing returned a key outside requested prefix")
-            seen.add(item)
-        truncated = (root.findtext("{*}IsTruncated") or "").lower() == "true"
-        if not truncated:
-            return sorted(seen)
-        next_marker = root.findtext("{*}NextMarker")
-        if not next_marker:
-            next_marker = (prefixes + keys)[-1] if prefixes or keys else ""
-        if not next_marker or next_marker <= marker:
-            raise ValueError("S3 listing pagination did not advance")
-        marker = next_marker
-        if page + 1 < max_pages:
-            time.sleep(0.3)  # bounded sequential metadata requests
-    raise ValueError("S3 listing exceeded page limit; refusing incomplete discovery")
+    return _shared_s3_list_prefixes(
+        prefix, fetcher=fetch, max_pages=max_pages, sleep=time.sleep
+    )
 
 
 def discover_archive_symbols() -> list[str]:
@@ -213,29 +198,15 @@ def discover_archive_symbols() -> list[str]:
 
 def discover_archive_months(symbol: str, timeframe: str) -> list[str]:
     prefix = f"{S3_ROOT_PREFIX}{symbol}/{timeframe}/"
-    entries = s3_list_prefixes(prefix)
-    pattern = re.compile(rf"{re.escape(prefix + symbol + '-' + timeframe + '-')}"
-                         r"(\d{4}-\d{2})\.zip\Z")
-    months = set()
-    for entry in entries:
-        match = pattern.fullmatch(entry)
-        if match and MONTH_PATTERN.fullmatch(match.group(1)):
-            months.add(match.group(1))
-    return sorted(months)
+    return _shared_months_from_entries(symbol, timeframe, s3_list_prefixes(prefix))
 
 
 def archive_url(symbol: str, timeframe: str, month: str) -> tuple[str, str]:
-    name = f"{symbol}-{timeframe}-{month}.zip"
-    return f"{BASE}/{symbol}/{timeframe}/{name}", name
+    return _shared_archive_url(symbol, timeframe, month)
 
 
 def checksum_expected(checksum: bytes, archive_name: str) -> str:
-    content = checksum.decode("utf-8-sig", errors="strict").strip()
-    for line in content.splitlines():
-        match = re.fullmatch(r"([A-Fa-f0-9]{64})\s+\*?(.+)", line.strip())
-        if match and Path(match.group(2)).name == archive_name:
-            return match.group(1).lower()
-    raise ValueError(f"bad checksum file, missing expected {archive_name}")
+    return _shared_checksum_expected(checksum, archive_name)
 
 
 def download_archive(*, url: str, name: str, raw_dir: Path):
@@ -277,58 +248,7 @@ def download_archive(*, url: str, name: str, raw_dir: Path):
 
 
 def parse_kline_zip(zip_path: Path, *, month: str, timeframe: str):
-    import numpy as np
-    import pandas as pd
-
-    with zipfile.ZipFile(zip_path) as z:
-        members = [x for x in z.infolist() if not x.is_dir() and x.filename.endswith(".csv")]
-        if len(members) != 1:
-            raise ValueError(f"expected exactly one CSV in {zip_path.name}, got {len(members)}")
-        member = members[0]
-        if member.file_size > 120 * 1024 * 1024:
-            raise ValueError("oversized uncompressed CSV")
-        with z.open(member) as stream:
-            df = pd.read_csv(stream, header=None, dtype=str)
-
-    if df.shape[1] != len(COLUMNS):
-        raise ValueError(f"unexpected CSV column count {df.shape[1]}; expected 12")
-    df.columns = list(COLUMNS)
-    if len(df) and str(df.iloc[0]["open_time"]).strip().lower() in ("open_time", "open time"):
-        df = df.iloc[1:].reset_index(drop=True)
-    if df.empty:
-        raise ValueError("empty CSV")
-
-    ticks = pd.to_numeric(df["open_time"], errors="raise")
-    if ticks.isna().any() or not np.isfinite(ticks).all():
-        raise ValueError("invalid open_time")
-    unit = "us" if float(ticks.median()) >= 1e14 else "ms"
-    date = pd.to_datetime(ticks, unit=unit, utc=True, errors="raise")
-    start = pd.Timestamp(month + "-01", tz="UTC")
-    year, mm = map(int, month.split("-"))
-    end = pd.Timestamp(year=year + (mm == 12), month=1 if mm == 12 else mm + 1,
-                       day=1, tz="UTC")
-    if bool(((date < start) | (date >= end)).any()):
-        raise ValueError("archive has K-line open times outside requested calendar month")
-    if bool(date.duplicated().any()) or not date.is_monotonic_increasing:
-        raise ValueError("duplicate or out-of-order K-line open times")
-    ts = date.astype("int64")
-    if bool((ts % (TIMEFRAME_SECONDS[timeframe] * 1_000_000_000) != 0).any()):
-        raise ValueError("misaligned K-line timestamps")
-
-    out = pd.DataFrame({"date": date})
-    for col in ("open", "high", "low", "close", "volume"):
-        out[col] = pd.to_numeric(df[col], errors="raise").astype("float64").to_numpy()
-    vals = out[["open", "high", "low", "close", "volume"]].to_numpy()
-    if not np.isfinite(vals).all():
-        raise ValueError("NaN or infinite OHLCV")
-    if bool((out[["open", "high", "low", "close"]] <= 0).any().any()):
-        raise ValueError("nonpositive OHLC price")
-    if bool((out["volume"] < 0).any()):
-        raise ValueError("negative volume")
-    if bool(((out["high"] < out[["open", "close", "low"]].max(axis=1)) |
-             (out["low"] > out[["open", "close", "high"]].min(axis=1))).any()):
-        raise ValueError("inconsistent OHLC ordering")
-    return out[["date", "open", "high", "low", "close", "volume"]]
+    return _shared_parse_kline_zip(zip_path, month=month, timeframe=timeframe)
 
 
 def gaps_summary(frame, timeframe: str):

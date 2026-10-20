@@ -83,10 +83,10 @@
 - Produces `BinanceVisionAdapter(http_client, raw_root, allow_1m=False)` with metadata-only `discover`, checksum-verified `download`, and parsed `read` operations.
 - Crypto allowlist is fixed to BTCUSDT, ETHUSDT, SOLUSDT, BNBUSDT, XRPUSDT; 1m requires explicit opt-in and BTCUSDT or ETHUSDT.
 
-- [ ] **Step 1: Add failing tests** for allowlist isolation from TradFi, 1m opt-in rules, safe S3 listing pagination, fixed archive host, redirect rejection, ZIP 404 vs missing checksum vs transport failure, checksum mismatch, size caps, parser bounds, and no archive payload fetch during discovery.
-- [ ] **Step 2: Run `pytest tests/test_data_engineering_source_vision.py scripts/test_binance_vision_tradfi.py -q` and confirm new tests fail while existing parser expectations remain captured.**
-- [ ] **Step 3: Extract reusable importer operations and implement the crypto adapter** without altering existing importer command behavior.
-- [ ] **Step 4: Run the focused Vision tests and existing importer suite; confirm all pass.**
+- [x] **Step 1: Add failing tests** for allowlist isolation from TradFi, 1m opt-in rules, safe S3 listing pagination, fixed archive host, redirect rejection, ZIP 404 vs missing checksum vs transport failure, checksum mismatch, size caps, parser bounds, and no archive payload fetch during discovery.
+- [x] **Step 2: Run `pytest tests/test_data_engineering_source_vision.py scripts/test_binance_vision_tradfi.py -q` and confirm new tests fail while existing parser expectations remain captured.** New adapter import failed as expected; first integrated run exposed an importer monkeypatch compatibility issue, subsequently fixed.
+- [x] **Step 3: Extract reusable importer operations and implement the crypto adapter** without altering existing importer command behavior.
+- [x] **Step 4: Run the focused Vision tests and existing importer suite; confirm all pass.** Combined focused set: 32 passed.
 - [ ] **Step 5: Commit** as `feat(data): add Binance Vision crypto adapter`.
 
 ### Task 4: Planning, validation receipts, and resumable stages
