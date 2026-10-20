@@ -29,7 +29,7 @@
     },
     "holdout": {
       "start": "2025-01-01T00:00:00Z",
-      "end": "2026-01-01T00:00:00Z"
+      "end": "2027-01-01T00:00:00Z"
     }
   },
   "parameter_bounds": {
@@ -46,5 +46,5 @@
       "max": 100
     }
   },
-  "policy_sha256": "deda80f424609d0f6af2d5b561a5799f4d0ab6842f46af589e55813a8b52db46"
+  "policy_sha256": "041efb79ddf9b88a71ff071cbfb52f833420658ff888cf6b6d87bb5f0a7ef209"
 }
