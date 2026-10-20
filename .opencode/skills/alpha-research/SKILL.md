@@ -14,7 +14,7 @@ Complete one bounded research cycle. Record the hypothesis, direction, target, t
 
 The legacy single-asset `factor.py` loader imports arbitrary Python in the engine process. Its OS isolation has not passed adversarial tests. **Do not invoke `candidate_cli run` or execute candidate Python through any other tool.** You may write a proposed per-asset candidate for Maintainer review, but do not execute it unattended. The `time_series` interface and historical evidence remain readable.
 
-The v1.1 cross-sectional entry point executes only engine-owned fixed transforms. Candidate config files contain data and transform names, never Python code. Use `relative_momentum`, `relative_volatility`, or `relative_volume` with positive lookback periods. Any new transform or evaluator requires a Maintainer change.
+The v1.1 cross-sectional entry point executes only engine-owned fixed transforms and strict-PIT fundamental metrics. Candidate config files contain declarations and actual snapshot pins, never Python code. Market features may use the legacy `{name, periods}` form; versioned declarations use `feature_schema_version: alpha-cs-feature-schema-v1`, with market `{kind, name, periods}` or fundamental `{kind: fundamental, metric, max_age, snapshot_pins:[{dataset_id, sha256}]}`. Fundamental inputs are accepted only if the trusted adapter validates the pinned snapshot and PIT v2 evidence. All current local fundamental snapshots are UNVERIFIED and will fail strict mode. Missing values remain missing. Any new transform or evaluator requires a Maintainer change.
 
 ## Research procedure
 

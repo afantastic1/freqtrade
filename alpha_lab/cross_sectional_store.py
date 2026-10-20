@@ -84,6 +84,14 @@ class CrossSectionalStore:
                           datetime.now(timezone.utc).isoformat()))
         return digest
 
+    def evidence_id(self, run_id: str) -> str | None:
+        """Return the immutable content identity for one run's evidence."""
+        with sqlite3.connect(self.db_path, timeout=30) as conn:
+            row = conn.execute(
+                "SELECT evidence_hash FROM cs_evaluations WHERE run_id=?", (run_id,)
+            ).fetchone()
+        return row[0] if row else None
+
     def family_review(self) -> dict:
         """Read-only Holm/BH correction across distinct development research keys."""
         with sqlite3.connect(self.db_path, timeout=30) as conn:

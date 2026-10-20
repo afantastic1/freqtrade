@@ -47,7 +47,7 @@ def _obs(available, value, *, asset="token:BTC", tradable="BTC", status="verifie
     }
 
 
-def test_asof_join_uses_availability_not_event_time_and_allows_exact_time():
+def test_asof_join_uses_availability_not_event_time_and_requires_strict_precedence():
     observations = _observations([
         _obs("2024-01-01T11:00:00Z", 7.0),
         _obs("2024-01-01T13:00:00Z", 9.0),
@@ -57,9 +57,19 @@ def test_asof_join_uses_availability_not_event_time_and_allows_exact_time():
 
     assert pd.isna(result.fundamental_value.iloc[0])
     assert result.fundamental_value.iloc[1] == 7.0
-    assert result.fundamental_value.iloc[2] == 9.0
+    assert result.fundamental_value.iloc[2] == 7.0
     assert result.fundamental_value.iloc[3] == 9.0
     assert result.pit_status.dropna().eq("VERIFIED").all()
+
+
+def test_asof_join_rejects_ambiguous_equal_timestamp_until_after_decision():
+    observations = _observations([_obs("2024-01-01T13:00:00Z", 9.0)])
+    panel = _panel(decisions=["2024-01-01T13:00:00.000Z", "2024-01-01T13:00:00.001Z"])
+
+    result = asof_join(panel, observations, metric="CapMrktEstUSD", max_age="3h")
+
+    assert pd.isna(result.fundamental_value.iloc[0])
+    assert result.fundamental_value.iloc[1] == 9.0
 
 
 def test_asof_join_rejects_unverified_or_missing_availability():
@@ -80,7 +90,7 @@ def test_conservative_upper_bound_prevents_join_before_proven_availability():
     observations = _observations([observation])
 
     result = asof_join(
-        _panel(decisions=["2024-01-01T12:00:00Z", "2024-01-01T13:00:00Z"]),
+        _panel(decisions=["2024-01-01T12:00:00.000Z", "2024-01-01T13:00:00.001Z"]),
         observations, metric="CapMrktEstUSD", max_age="24h",
     )
 

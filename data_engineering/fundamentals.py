@@ -17,6 +17,7 @@ from .pit import PITRecord, validate_pit_sidecar
 from .registries import AssetRegistry, MetricRegistry
 
 _STRICT_PIT_READ_TOKEN = object()
+PIT_ASOF_POLICY_VERSION = "pit-asof-strict-precedence-v1"
 
 
 def _validated_max_age(max_age: str) -> pd.Timedelta:
@@ -397,10 +398,12 @@ def asof_join(
         left, right,
         left_on="decision_time", right_on="feature_available_time",
         by="tradable_asset_id", direction="backward", tolerance=age,
-        allow_exact_matches=True,
+        allow_exact_matches=False,
     ).sort_values("_row_order")
     joined.index = panel.frame.index
-    return joined[[
+    result = joined[[
         "fundamental_value", "feature_available_time", "asset_id", "entity_scope",
         "metric", "source", "dataset_id", "snapshot_sha256", "pit_status",
     ]]
+    result.attrs["pit_asof_policy_version"] = PIT_ASOF_POLICY_VERSION
+    return result

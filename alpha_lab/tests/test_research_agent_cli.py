@@ -198,7 +198,7 @@ def test_fixed_transform_gateway_never_imports_malicious_factor(tmp_path):
     frame.reset_index().to_csv(panel_dir / "synthetic.csv", index=False)
     config = {"mode": "cross_sectional", "hypothesis": "gateway fixed transform test",
               "symbols": symbols, "timeframe": "1h", "horizon": 2,
-              "start": times[0].isoformat(), "end": (times[-1] + pd.Timedelta(hours=1)).isoformat(),
+              "start": times[0].isoformat(), "end": (times[-1] + pd.Timedelta(hours=1, seconds=2)).isoformat(),
               "train_end": times[12].isoformat(), "test_end": times[26].isoformat(),
               "universe": {"kind": "fixed", "id": "all", "symbols": symbols},
               "features": [{"name": "relative_momentum", "periods": 2}],
@@ -208,3 +208,10 @@ def test_fixed_transform_gateway_never_imports_malicious_factor(tmp_path):
     result = execute_request(root=tmp_path)
     assert result["mode"] == "cross_sectional"
     assert not marker.exists()
+
+    from alpha_lab.cross_sectional_store import CrossSectionalStore
+    request = {"action": "show", "run_id": result["run_id"]}
+    (candidate / "request.json").write_text(json.dumps(request))
+    shown = execute_request(root=tmp_path)
+    evidence_id = CrossSectionalStore(tmp_path / "experiments.sqlite3").evidence_id(result["run_id"])
+    assert shown["run"]["cross_sectional_evidence_id"] == evidence_id

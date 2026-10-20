@@ -7,6 +7,9 @@ from alpha_lab.data.market_panel import MarketPanel
 from freqtrade.exchange import timeframe_to_seconds
 
 
+CROSS_SECTIONAL_LABEL_VERSION = "cross-sectional-research-proxy-v1"
+
+
 def cross_sectional_labels(
     panel: MarketPanel, membership: pd.Series, *, timeframe: str, horizon: int
 ) -> pd.DataFrame:

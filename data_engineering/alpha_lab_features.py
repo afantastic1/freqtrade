@@ -9,7 +9,7 @@ import pandas as pd
 
 from alpha_lab.data.market_panel import MarketPanel
 
-from .fundamentals import _validated_max_age, asof_join
+from .fundamentals import PIT_ASOF_POLICY_VERSION, _validated_max_age, asof_join
 from .registries import AssetRegistry, MetricRegistry
 
 
@@ -61,6 +61,7 @@ def build_fundamental_features(
             "snapshot_pins": observations.attrs.get("snapshot_pins", []),
             "pit_attestation_sha256": observations.attrs.get("pit_attestation_sha256", []),
             "max_age": max_age,
+            "pit_asof_policy_version": PIT_ASOF_POLICY_VERSION,
         })
         features[name] = values
     return features

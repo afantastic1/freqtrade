@@ -19,7 +19,7 @@ def test_synthetic_runner_is_idempotent_and_has_separate_sqlite_evidence(tmp_pat
     config = {"mode": "cross_sectional", "hypothesis": "synthetic relative momentum",
               "symbols": list(symbols), "timeframe": "1h",
               "horizon": 2, "start": times[0].isoformat(),
-              "end": (times[-1] + pd.Timedelta(hours=1)).isoformat(),
+              "end": (times[-1] + pd.Timedelta(hours=1, seconds=2)).isoformat(),
               "train_end": times[16].isoformat(), "test_end": times[30].isoformat(),
               "universe": {"kind": "fixed", "id": "all", "symbols": list(symbols)},
               "features": [{"name": "relative_momentum", "periods": 2}],
@@ -77,7 +77,7 @@ def test_changed_panel_content_changes_research_identity(tmp_path):
     config = {"mode": "cross_sectional", "hypothesis": "identity sensitivity",
               "symbols": list(symbols), "timeframe": "1h",
               "horizon": 1, "start": times[0].isoformat(),
-              "end": (times[-1] + pd.Timedelta(hours=1)).isoformat(),
+              "end": (times[-1] + pd.Timedelta(hours=1, seconds=2)).isoformat(),
               "train_end": times[12].isoformat(), "test_end": times[26].isoformat(),
               "universe": {"kind": "fixed", "id": "all", "symbols": list(symbols)},
               "features": [{"name": "relative_momentum", "periods": 1}],
@@ -88,6 +88,31 @@ def test_changed_panel_content_changes_research_identity(tmp_path):
     changed.loc[(times[5], "A"), "close"] += 0.1
     second = run_cross_sectional(config, MarketPanel(changed), root=tmp_path)
     assert first["run_id"] != second["run_id"]
+
+
+def test_runner_rejects_panel_available_outside_development_window():
+    from alpha_lab.cross_sectional_runner import _validate_config
+
+    times = pd.date_range("2024-01-01", periods=12, freq="h", tz="UTC")
+    symbols = tuple("ABCDE")
+    index = pd.MultiIndex.from_product([times, symbols], names=["open_time", "symbol"])
+    data = pd.DataFrame({
+        "open": 1.0, "close": 1.0, "volume": 1.0,
+        "available_time": [time + pd.Timedelta(hours=1) for time, _ in index],
+    }, index=index)
+    panel = MarketPanel(data)
+    config = {
+        "mode": "cross_sectional", "hypothesis": "availability boundary",
+        "symbols": list(symbols), "timeframe": "1h", "horizon": 1,
+        "start": times[0].isoformat(), "train_end": times[4].isoformat(),
+        "test_end": times[10].isoformat(), "end": (times[-1] + pd.Timedelta(hours=1)).isoformat(),
+        "universe": {"kind": "fixed", "id": "all", "symbols": list(symbols)},
+        "features": [{"name": "relative_momentum", "periods": 1}],
+        "n_boot": 19, "block_size": 2,
+    }
+
+    with pytest.raises(ValueError, match="panel availability outside development window"):
+        _validate_config(config, panel)
 
 
 def test_cross_sectional_decision_gate_rejects_missing_mode_evidence(tmp_path):
@@ -105,6 +130,85 @@ def test_cross_sectional_decision_gate_rejects_missing_mode_evidence(tmp_path):
             run_id=run_id, candidate_source_hash="source", supporting_evidence=[],
             opposing_evidence=[], conclusion="INCONCLUSIVE", next_hypothesis="none",
             next_actions=["ARCHIVE"],
+        )
+
+
+def test_legacy_diagnostic_evidence_cannot_be_supported_when_gate_flag_is_enabled(tmp_path, monkeypatch):
+    import alpha_lab.research_store as research_store_module
+    from alpha_lab.cross_sectional_store import CrossSectionalStore
+    from alpha_lab.experiment_registry import ExperimentRegistry
+    from alpha_lab.research_store import ResearchStore
+
+    db = tmp_path / "experiments.db"
+    registry = ExperimentRegistry(db)
+    run_id = registry.create_run(config_hash="diagnostic", config_json="{}")
+    evidence = {
+        "mode": "cross_sectional",
+        "method_version": "cs-time-block-centered-v1",
+        "candidate_source_hash": "source",
+        "results": {},
+    }
+    CrossSectionalStore(db).append(run_id, "diagnostic", evidence)
+    registry.complete_run(run_id, tmp_path / "run")
+    monkeypatch.setattr(research_store_module, "CROSS_SECTIONAL_SUPPORTED_ENABLED", True)
+
+    with pytest.raises(ValueError, match="calibrated evidence qualification"):
+        ResearchStore(db).create_decision(
+            run_id=run_id, candidate_source_hash="source", supporting_evidence=[],
+            opposing_evidence=[], conclusion="SUPPORTED", next_hypothesis="none",
+            next_actions=["ARCHIVE"],
+        )
+
+
+def test_supported_requires_approved_method_calibration_and_exact_evidence_id(tmp_path, monkeypatch):
+    import alpha_lab.research_store as research_store_module
+    from alpha_lab.cross_sectional_store import CrossSectionalStore
+    from alpha_lab.experiment_registry import ExperimentRegistry
+    from alpha_lab.research_store import ResearchStore
+
+    db = tmp_path / "experiments.db"
+    registry = ExperimentRegistry(db)
+    run_id = registry.create_run(config_hash="approved-fixture", config_json="{}")
+    evidence = {
+        "mode": "cross_sectional", "method_version": "fixture-method-v2",
+        "calibration_id": "fixture-calibration-v2", "candidate_source_hash": "source",
+        "inference_status": "CALIBRATED", "feature_coverage": {"status": "READY"},
+        "results": {"primary": {"status": "EVALUATED",
+                                  "bootstrap": {"p_two_sided": 0.01}}},
+    }
+    evidence_id = CrossSectionalStore(db).append(run_id, "approved-fixture", evidence)
+    registry.complete_run(run_id, tmp_path / "run")
+    monkeypatch.setattr(research_store_module, "CROSS_SECTIONAL_SUPPORTED_ENABLED", True)
+    monkeypatch.setattr(
+        research_store_module, "CROSS_SECTIONAL_SUPPORTED_ADMISSIONS",
+        frozenset({("fixture-method-v2", "fixture-calibration-v2")}),
+    )
+    store = ResearchStore(db)
+    decision = {
+        "run_id": run_id, "candidate_source_hash": "source",
+        "supporting_evidence": [], "opposing_evidence": [],
+        "conclusion": "SUPPORTED", "next_hypothesis": "none",
+        "next_actions": ["ARCHIVE"],
+    }
+
+    with pytest.raises(ValueError, match="method_version, calibration_id, and evidence_id"):
+        store.create_decision(**decision, evidence_id="0" * 64)
+
+    stored = store.create_decision(**decision, evidence_id=evidence_id)
+    assert stored["conclusion"] == "SUPPORTED"
+
+    diagnostic = {**evidence, "inference_status": "DIAGNOSTIC_ONLY"}
+    diagnostic_run_id = registry.create_run(
+        config_hash="diagnostic-status", config_json="{}"
+    )
+    diagnostic_id = CrossSectionalStore(db).append(
+        diagnostic_run_id, "diagnostic-status", diagnostic
+    )
+    registry.complete_run(diagnostic_run_id, tmp_path / "diagnostic-run")
+    diagnostic_run = ResearchStore(db)
+    with pytest.raises(ValueError, match="method_version, calibration_id, and evidence_id"):
+        diagnostic_run.create_decision(
+            **{**decision, "run_id": diagnostic_run_id}, evidence_id=diagnostic_id
         )
 
 

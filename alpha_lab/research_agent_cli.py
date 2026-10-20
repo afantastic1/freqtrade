@@ -101,6 +101,28 @@ def execute_request(*, root: Path = ROOT) -> dict:
         return {"decision": store.create_decision(run_id=run_id,
                                                    candidate_source_hash=source_hash,
                                                    **decision)}
+    if action == "decide" and set(request) == {
+        "action", "run_id", "source_hash", "decision", "evidence_id"
+    }:
+        run_id = request["run_id"]
+        source_hash = request["source_hash"]
+        evidence_id = request["evidence_id"]
+        if not isinstance(run_id, str) or not RUN_ID.fullmatch(run_id):
+            raise ValueError("invalid run_id")
+        if not isinstance(source_hash, str) or not SHA256.fullmatch(source_hash):
+            raise ValueError("invalid source_hash")
+        if not isinstance(evidence_id, str) or not SHA256.fullmatch(evidence_id):
+            raise ValueError("invalid evidence_id")
+        decision = request["decision"]
+        if not isinstance(decision, dict) or set(decision) != {
+            "supporting_evidence", "opposing_evidence", "conclusion",
+            "next_hypothesis", "next_actions", "agent_identity",
+        }:
+            raise ValueError("invalid decision fields")
+        return {"decision": store.create_decision(
+            run_id=run_id, candidate_source_hash=source_hash,
+            evidence_id=evidence_id, **decision,
+        )}
     raise ValueError("unsupported research request")
 
 

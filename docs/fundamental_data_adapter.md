@@ -123,8 +123,10 @@ Only normalized observations returned by `read(..., access="strict_pit")` can
 enter `asof_join`; merely setting a DataFrame status or `attrs` field is not
 accepted. It maps market
 symbols through the Asset Registry and matches backward on
-`available_time <= MarketPanel.frame.available_time`. The caller must choose a
-maximum age; expired and unmatched rows remain null. It rejects observations
+`available_time < MarketPanel.frame.available_time` under policy
+`pit-asof-strict-precedence-v1`. Equal timestamps are excluded because v2 does
+not attest clock precision or whether a release at the same timestamp was
+usable at that decision instant. The caller must choose a maximum age; expired and unmatched rows remain null. It rejects observations
 or market decisions outside the development interval. The feature bridge
 returns Series aligned exactly to the `(open_time, symbol)` panel index:
 

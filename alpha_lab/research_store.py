@@ -10,8 +10,9 @@ from alpha_lab.experiment_registry import utc_now
 
 
 CANDIDATE_MANIFEST_VERSION = 1
-CROSS_SECTIONAL_VERDICT_POLICY_VERSION = "cs-verdict-gated-v1"
+CROSS_SECTIONAL_VERDICT_POLICY_VERSION = "cs-verdict-gated-v2"
 CROSS_SECTIONAL_SUPPORTED_ENABLED = False
+CROSS_SECTIONAL_SUPPORTED_ADMISSIONS: frozenset[tuple[str, str]] = frozenset()
 CROSS_SECTIONAL_DECISION_CONCLUSIONS = frozenset({
     "INCONCLUSIVE", "REJECTED", "NOT_EVALUABLE",
 })
@@ -598,6 +599,7 @@ class ResearchStore:
         next_hypothesis: str | dict,
         next_actions: list | dict,
         agent_identity: str | None = None,
+        evidence_id: str | None = None,
     ) -> dict:
         structural_fields = {
             "supporting_evidence": (supporting_evidence, (list, dict)),
@@ -611,6 +613,8 @@ class ResearchStore:
                 raise TypeError(f"{field} has an invalid structural type")
         if agent_identity is not None and not isinstance(agent_identity, str):
             raise TypeError("agent_identity must be text or None")
+        if evidence_id is not None and not isinstance(evidence_id, str):
+            raise TypeError("evidence_id must be text or None")
 
         payloads = {
             "supporting_evidence_json": self._decision_json(
@@ -647,11 +651,17 @@ class ResearchStore:
                 cs_table = conn.execute(
                     "SELECT 1 FROM sqlite_master WHERE type='table' AND name='cs_evaluations'"
                 ).fetchone()
-                cs_row = (conn.execute("SELECT payload_json FROM cs_evaluations WHERE run_id=?",
+                cs_row = (conn.execute("SELECT payload_json,evidence_hash FROM cs_evaluations WHERE run_id=?",
                                        (run_id,)).fetchone() if cs_table else None)
                 if cs_row is None:
                     raise ValueError("Research Decision run is not indexed")
                 cs_evidence = json.loads(cs_row["payload_json"])
+                canonical_evidence = json.dumps(
+                    cs_evidence, sort_keys=True, separators=(",", ":"), allow_nan=False
+                )
+                verified_evidence_id = hashlib.sha256(canonical_evidence.encode()).hexdigest()
+                if verified_evidence_id != cs_row["evidence_hash"]:
+                    raise ValueError("cross-sectional evidence identity is inconsistent")
                 if cs_evidence.get("candidate_source_hash") != candidate_source_hash:
                     raise ValueError("candidate source_hash does not match run")
                 if cs_evidence.get("mode") != "cross_sectional":
@@ -662,6 +672,29 @@ class ResearchStore:
                         raise ValueError(
                             "cross-sectional conclusion must use the closed non-supported vocabulary "
                             "while the calibration gate is closed"
+                        )
+                elif conclusion == "SUPPORTED":
+                    method_version = cs_evidence.get("method_version")
+                    calibration_id = cs_evidence.get("calibration_id")
+                    results = cs_evidence.get("results")
+                    has_evaluable_result = isinstance(results, dict) and any(
+                        isinstance(result, dict)
+                        and result.get("status") == "EVALUATED"
+                        and (result.get("bootstrap") or {}).get("p_two_sided") is not None
+                        for result in results.values()
+                    )
+                    if (
+                        evidence_id != verified_evidence_id
+                        or not isinstance(method_version, str)
+                        or not isinstance(calibration_id, str)
+                        or (method_version, calibration_id) not in CROSS_SECTIONAL_SUPPORTED_ADMISSIONS
+                        or cs_evidence.get("inference_status") != "CALIBRATED"
+                        or (cs_evidence.get("feature_coverage") or {}).get("status") != "READY"
+                        or not has_evaluable_result
+                    ):
+                        raise ValueError(
+                            "cross-sectional SUPPORTED requires calibrated evidence qualification "
+                            "for this method_version, calibration_id, and evidence_id"
                         )
                 conn.execute("""
                     INSERT INTO cs_research_decisions (
@@ -733,7 +766,7 @@ class ResearchStore:
             """, (run_id,)).fetchone()
             cs_row = None
             if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='cs_evaluations'").fetchone():
-                cs_row = conn.execute("SELECT payload_json FROM cs_evaluations WHERE run_id=?",
+                cs_row = conn.execute("SELECT payload_json,evidence_hash FROM cs_evaluations WHERE run_id=?",
                                       (run_id,)).fetchone()
         if row is None:
             return None
@@ -742,6 +775,7 @@ class ResearchStore:
         if cs_row is not None:
             result["mode"] = "cross_sectional"
             result["cross_sectional_evidence"] = json.loads(cs_row["payload_json"])
+            result["cross_sectional_evidence_id"] = cs_row["evidence_hash"]
         else:
             result["mode"] = "time_series"
         return result
