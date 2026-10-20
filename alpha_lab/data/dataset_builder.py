@@ -11,18 +11,36 @@ import pandas as pd
 
 from alpha_lab_contracts.research_request_v2 import ResearchRequestV2
 from alpha_lab_contracts.campaign_policy_v1 import CampaignPolicyRegistry
-from alpha_lab.labels.forward_returns import forward_returns
 from .availability import AvailabilityRuleRegistry, asof_join
 from .build_products import (
     DatasetBuildReportV1, DatasetBuildResultV2, EvaluatorLabelsV1, WorkerInputV2,
 )
 from .dataset import MarketData
 from .market_panel import MarketPanel
-from alpha_lab.labels.cross_sectional import cross_sectional_labels
 from .dataset_manifest import publish_dataset
 from .source_resolver import DatasetSourceResolver
 from .temporal_plan import DatasetBuildOptionsV1, build_temporal_plan, enforce_required_slots
+from .pit_labels import cross_sectional_labels_v2, dynamic_membership_asof, forward_returns_v2
+from .universe import DynamicUniverse
 from freqtrade.exchange import timeframe_to_seconds
+
+
+def _effective_max_age(source, data_type, options):
+    configured = options.max_age_by_data_type.get(data_type)
+    registered = source.quality.get("availability_max_age_seconds")
+    values = [pd.Timedelta(seconds=value) for value in (configured, registered) if value is not None]
+    return min(values) if values else None
+
+
+def _missing_decisions(source, request, step):
+    # Only fixed-delay rules define a regular expected decision schedule.
+    delay_seconds = source.quality.get("availability_fixed_delay_seconds")
+    if delay_seconds is None:
+        return pd.DatetimeIndex([])
+    start = pd.Timestamp(request.start) + pd.Timedelta(seconds=delay_seconds)
+    expected = pd.date_range(start, pd.Timestamp(request.end), freq=step, inclusive="left")
+    observed = pd.DatetimeIndex(pd.to_datetime(source.availability.available_time, utc=True).dropna().unique())
+    return expected.difference(observed)
 
 
 class DatasetBuilderV2:
@@ -38,6 +56,8 @@ class DatasetBuilderV2:
         policy = self.policy_registry.get(request.campaign_id, request.policy_version, request.campaign_policy_sha256)
         request = ResearchRequestV2.from_dict(json.loads(request.canonical_json()), self.policy_registry)
         plan = build_temporal_plan(request, policy)
+        if plan.warmup_truncated_bars and options.missing_data_policy == "reject":
+            raise ValueError(f"warmup exceeds selected split by {plan.warmup_truncated_bars} bars")
         if plan.label_extension_truncated and options.missing_data_policy == "reject":
             raise ValueError("label extension exceeds selected split end")
         ohlcv = [item for item in request.data_types if item in {"futures_ohlcv", "spot_ohlcv"}]
@@ -86,28 +106,45 @@ class DatasetBuilderV2:
         market = MarketData(symbol, request.timeframe, market_frame[[
             "open_time", "close_time", "available_time", "open", "high", "low", "close", "volume",
         ]])
-        study = (market.frame.open_time >= pd.Timestamp(request.start)) & (market.frame.open_time < pd.Timestamp(request.end))
-        worker_mask = (market.frame.open_time >= pd.Timestamp(plan.warmup_start)) & (market.frame.open_time < pd.Timestamp(request.end))
+        study = (market.frame.available_time >= pd.Timestamp(request.start)) & (market.frame.available_time < pd.Timestamp(request.end))
+        worker_mask = ((market.frame.open_time >= pd.Timestamp(plan.warmup_start))
+                       & (market.frame.available_time < pd.Timestamp(request.end)))
         worker_frame = market.frame.loc[worker_mask].copy()
         worker_frame["decision_time"] = worker_frame.available_time
+        auxiliary_issues = []
+        missing_decisions = _missing_decisions(primary_source, request, step)
+        if len(missing_decisions) and options.missing_data_policy == "reject":
+            raise ValueError(f"missing required decision slots: {len(missing_decisions)}")
         for data_type in request.data_types:
             if data_type == primary:
                 continue
             identity = self.resolver._expected_identity(symbol, data_type, request.timeframe)
             auxiliary = next((source for source in sources if source.identity == identity), None)
             if auxiliary is None:
+                prefix = f"{identity.market_type}_{identity.data_kind}_"
+                columns = ("open", "high", "low", "close", "volume") if identity.data_kind == "ohlcv" else (identity.data_kind,)
+                for column in columns:
+                    worker_frame[prefix + column] = pd.NA
+                worker_frame[prefix + "is_available"] = False
                 continue
             joined = asof_join(
                 worker_frame[["decision_time"]], auxiliary.availability,
                 decision_time="decision_time",
-                max_age=(pd.Timedelta(seconds=options.max_age_by_data_type[data_type])
-                         if data_type in options.max_age_by_data_type else None),
+                max_age=_effective_max_age(auxiliary, data_type, options),
             )
+            source_available = joined.available_time.notna()
+            if not source_available.all():
+                auxiliary_issues.append({"code": "AUXILIARY_UNAVAILABLE_AT_DECISION",
+                                         "symbol": symbol, "data_type": data_type,
+                                         "decision_rows": int((~source_available).sum())})
+            if options.missing_data_policy == "reject" and not source_available.all():
+                raise ValueError(f"auxiliary source has unavailable or stale rows: {data_type}")
             extra = joined.drop(columns=["decision_time", "available_time"], errors="ignore")
             prefix = f"{identity.market_type}_{identity.data_kind}_"
             extra = extra.rename(columns={column: prefix + column for column in extra.columns})
+            extra[prefix + "is_available"] = source_available.to_numpy()
             worker_frame = pd.concat([worker_frame.reset_index(drop=True), extra.reset_index(drop=True)], axis=1)
-        labels = forward_returns(market, horizon=request.label_horizon_bars)
+        labels = forward_returns_v2(market, horizon=request.label_horizon_bars)
         labels = labels.loc[study].copy()
         labels = labels.rename(columns={"reference_return": "label_value"})
         labels["label_valid"] = labels.label_value.notna()
@@ -146,7 +183,13 @@ class DatasetBuilderV2:
         if plan.label_extension_truncated:
             issues += ({"code": "LABEL_EXTENSION_TRUNCATED_AT_SPLIT",
                         "missing_labels": int(labels.label_value.isna().sum())},)
-        report = DatasetBuildReportV1(sources=source_records, issues=tuple(missing_source_issues) + issues, quality={"worker_rows": len(worker.frame), "label_rows": len(evaluator.frame), "missing_primary_slots": len(missing_slots)})
+        if plan.warmup_truncated_bars:
+            issues += ({"code": "WARMUP_TRUNCATED_AT_SPLIT",
+                        "missing_warmup_bars": plan.warmup_truncated_bars},)
+        if len(missing_decisions):
+            issues += ({"code": "MISSING_DECISION_SLOTS",
+                        "decision_times": [stamp.isoformat() for stamp in missing_decisions]},)
+        report = DatasetBuildReportV1(sources=source_records, issues=tuple(missing_source_issues) + tuple(auxiliary_issues) + issues, quality={"worker_rows": len(worker.frame), "label_rows": len(evaluator.frame), "missing_primary_slots": len(missing_slots)})
         result = DatasetBuildResultV2(worker, evaluator, report, manifest)
         artifact = publish_dataset(result, self.output_root)
         return DatasetBuildResultV2(worker, evaluator, report, manifest, artifact)
@@ -156,6 +199,7 @@ class DatasetBuilderV2:
         assets = []
         by_symbol = {}
         missing_slots_by_symbol = {}
+        auxiliary_issues = []
         for symbol in request.symbols:
             identity = self.resolver._expected_identity(symbol, primary, request.timeframe)
             source = next((item for item in sources if item.identity == identity), None)
@@ -165,6 +209,12 @@ class DatasetBuilderV2:
                 raise ValueError(f"primary market source has no observations for {symbol}")
             if source.availability.pit_status.eq("UNVERIFIED").any():
                 raise ValueError("UNVERIFIED availability cannot enter worker input")
+            missing_decisions = _missing_decisions(source, request, step)
+            if len(missing_decisions) and options.missing_data_policy == "reject":
+                raise ValueError(f"missing required decision slots for {symbol}: {len(missing_decisions)}")
+            if len(missing_decisions):
+                auxiliary_issues.append({"code": "MISSING_DECISION_SLOTS", "symbol": symbol,
+                                         "decision_times": [stamp.isoformat() for stamp in missing_decisions]})
             frame = source.availability.copy(deep=True)
             frame["open_time"] = pd.to_datetime(frame.date, utc=True)
             frame["close_time"] = frame.open_time + step
@@ -176,16 +226,29 @@ class DatasetBuilderV2:
                 aux_identity = self.resolver._expected_identity(symbol, data_type, request.timeframe)
                 auxiliary = next((item for item in sources if item.identity == aux_identity), None)
                 if auxiliary is None:
+                    prefix = f"{aux_identity.market_type}_{aux_identity.data_kind}_"
+                    columns = ("open", "high", "low", "close", "volume") if aux_identity.data_kind == "ohlcv" else (aux_identity.data_kind,)
+                    for column in columns:
+                        frame[prefix + column] = pd.NA
+                    frame[prefix + "is_available"] = False
                     continue
                 joined = asof_join(
                     frame[["decision_time"]], auxiliary.availability,
                     decision_time="decision_time",
-                    max_age=(pd.Timedelta(seconds=options.max_age_by_data_type[data_type])
-                             if data_type in options.max_age_by_data_type else None),
+                    max_age=_effective_max_age(auxiliary, data_type, options),
                 )
+                source_available = joined.available_time.notna()
+                if not source_available.all():
+                    auxiliary_issues.append({"code": "AUXILIARY_UNAVAILABLE_AT_DECISION",
+                                             "symbol": symbol, "data_type": data_type,
+                                             "decision_rows": int((~source_available).sum())})
+                if options.missing_data_policy == "reject" and not source_available.all():
+                    raise ValueError(f"auxiliary source has unavailable or stale rows: {data_type}")
                 extra = joined.drop(columns=["decision_time", "available_time"], errors="ignore")
                 prefix = f"{aux_identity.market_type}_{aux_identity.data_kind}_"
-                frame = pd.concat([frame.reset_index(drop=True), extra.rename(columns={column: prefix + column for column in extra.columns}).reset_index(drop=True)], axis=1)
+                extra = extra.rename(columns={column: prefix + column for column in extra.columns})
+                extra[prefix + "is_available"] = source_available.to_numpy()
+                frame = pd.concat([frame.reset_index(drop=True), extra.reset_index(drop=True)], axis=1)
             market = MarketData(symbol, request.timeframe, frame[[
                 "open_time", "close_time", "available_time", "open", "high", "low", "close", "volume",
             ] + [column for column in frame.columns if column.startswith(("spot_", "futures_"))]].sort_values("open_time").reset_index(drop=True))
@@ -198,11 +261,13 @@ class DatasetBuilderV2:
             missing = enforce_required_slots(expected_slots, pd.DatetimeIndex(actual), options.missing_data_policy)
             if len(missing):
                 missing_slots_by_symbol[symbol] = [stamp.isoformat() for stamp in missing]
-        study_mask = ((panel.frame.index.get_level_values("open_time") >= pd.Timestamp(request.start))
-                      & (panel.frame.index.get_level_values("open_time") < pd.Timestamp(request.end)))
+        decision_times = panel.frame.available_time
+        study_mask = ((decision_times >= pd.Timestamp(request.start))
+                      & (decision_times < pd.Timestamp(request.end)))
         worker_mask = ((panel.frame.index.get_level_values("open_time") >= pd.Timestamp(plan.warmup_start))
-                       & (panel.frame.index.get_level_values("open_time") < pd.Timestamp(request.end)))
-        membership = universe.membership(panel)
+                       & (decision_times < pd.Timestamp(request.end)))
+        membership = (dynamic_membership_asof(universe, panel)
+                      if isinstance(universe, DynamicUniverse) else universe.membership(panel))
         if not membership.index.equals(panel.frame.index) or membership.isna().any():
             raise ValueError("universe membership must align to market panel")
         missing_membership_symbols = []
@@ -211,7 +276,7 @@ class DatasetBuilderV2:
             missing_membership_symbols = sorted(set(request.symbols) - known)
         if missing_membership_symbols and options.missing_data_policy == "reject":
             raise ValueError("missing point-in-time membership history")
-        labels = cross_sectional_labels(
+        labels = cross_sectional_labels_v2(
             panel, membership, timeframe=request.timeframe, horizon=request.label_horizon_bars
         )
         label_availability = labels["label_available_time"].where(membership.astype(bool))
@@ -219,8 +284,6 @@ class DatasetBuilderV2:
         labels["label_available_time"] = max_availability.where(labels.relative_return.notna())
         labels = labels.loc[study_mask].copy()
         labels["label_value"] = labels["relative_return"]
-        labels["label_end_time"] = pd.Series(labels.index.get_level_values("open_time"), index=labels.index) + request.label_horizon_bars * step
-        labels.loc[~labels.label_valid if "label_valid" in labels else labels.relative_return.isna(), "label_end_time"] = pd.NaT
         labels["label_valid"] = labels.label_value.notna()
         labels["validity_reason"] = labels.label_valid.map({True: "VALID", False: "INSUFFICIENT_OR_GAPPED_HORIZON_OR_MEMBERSHIP"})
         if options.missing_data_policy == "reject" and not labels.label_valid.all():
@@ -258,14 +321,17 @@ class DatasetBuilderV2:
             "membership_sha256": hashlib.sha256(membership.astype("uint8").to_numpy().tobytes()).hexdigest(),
             "survivorship_caveat": "fixed universe uses current membership" if type(universe).__name__ == "FixedUniverse" else None,
         }
-        cs_issues = (tuple(missing_source_issues)
+        cs_issues = (tuple(missing_source_issues) + tuple(auxiliary_issues)
                      + tuple({"code": "MISSING_PRIMARY_SLOTS", "symbol": symbol, "intervals": intervals}
                              for symbol, intervals in missing_slots_by_symbol.items())
                      + (({"code": "MISSING_MEMBERSHIP_HISTORY", "symbols": missing_membership_symbols},)
                         if missing_membership_symbols else ())
                      + (({"code": "LABEL_EXTENSION_TRUNCATED_AT_SPLIT",
                            "missing_labels": int(labels.label_value.isna().sum())},)
-                        if plan.label_extension_truncated else ()))
+                        if plan.label_extension_truncated else ())
+                     + (({"code": "WARMUP_TRUNCATED_AT_SPLIT",
+                           "missing_warmup_bars": plan.warmup_truncated_bars},)
+                        if plan.warmup_truncated_bars else ()))
         report = DatasetBuildReportV1(sources=source_records, issues=cs_issues, quality={
             "worker_rows": len(worker.frame), "label_rows": len(evaluator.frame),
             "membership_count": int(membership.loc[study_mask].sum()),

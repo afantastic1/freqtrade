@@ -1,5 +1,7 @@
 from dataclasses import replace
 from datetime import timedelta
+import json
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -36,14 +38,16 @@ def test_temporal_plan_uses_half_open_study_window():
 def test_temporal_plan_reads_exact_lookback_slots():
     req, policy = request()
     plan = build_temporal_plan(req, policy)
-    assert plan.warmup_start == req.start - timedelta(minutes=10)
+    assert plan.warmup_start == req.start - timedelta(minutes=15)
     assert plan.warmup_end == req.start
 
 
 def test_temporal_plan_never_crosses_selected_split():
     req, policy = request()
     req = replace(req, start=policy.splits["discovery"].start + timedelta(minutes=10), end=policy.splits["discovery"].start + timedelta(minutes=15))
-    assert build_temporal_plan(req, policy).warmup_start == policy.splits["discovery"].start
+    plan = build_temporal_plan(req, policy)
+    assert plan.warmup_start == policy.splits["discovery"].start
+    assert plan.warmup_truncated_bars == 1
 
 
 def test_label_extension_includes_horizon_bar():
@@ -61,11 +65,39 @@ def test_label_extension_is_clipped_and_marked_at_split_boundary():
     assert plan.label_extension_truncated
 
 
+def test_temporal_plan_records_warmup_clipped_at_split_start():
+    policy_raw = json.loads((Path(__file__).parents[2] / "alpha_lab_contracts/campaigns/example_campaign-v1.json").read_text())
+    registry = FileCampaignPolicyRegistry()
+    policy = registry.get("example_campaign", "1", policy_raw["policy_sha256"])
+    split = policy.splits["discovery"]
+    raw = {"protocol_version": "2.0-research-request", "request_id": "warmup-edge",
+           "campaign_id": "example_campaign", "policy_version": "1",
+           "campaign_policy_sha256": policy_raw["policy_sha256"],
+           "start": split.start.isoformat(), "end": (split.start + timedelta(minutes=10)).isoformat(),
+           "symbols": ["BTCUSDT"], "timeframe": "5m", "mode": "time_series",
+           "data_types": ["futures_ohlcv"], "split": "discovery", "lookback_bars": 2,
+           "label_horizon_bars": 1, "embargo_bars": 0}
+    request = ResearchRequestV2.from_dict(raw, registry)
+    plan = build_temporal_plan(request, policy)
+    assert plan.warmup_start == split.start
+    assert plan.warmup_truncated_bars == 2
+
+
 def test_partition_purges_unavailable_train_labels_and_applies_embargo():
     labels = pd.DataFrame({"decision_time": pd.to_datetime(["2023-01-01T00:00Z", "2023-01-01T00:05Z", "2023-01-01T00:10Z", "2023-01-01T00:20Z"], utc=True), "label_available_time": pd.to_datetime(["2023-01-01T00:05Z", "2023-01-01T00:20Z", "2023-01-01T00:16Z", "2023-01-01T00:25Z"], utc=True)})
     train, test = partition_temporal_samples(labels, train_end=pd.Timestamp("2023-01-01T00:15Z"), test_end=pd.Timestamp("2023-01-01T01:00Z"), timeframe="5m", embargo_bars=1)
     assert len(train) == 1
     assert test.decision_time.tolist() == [pd.Timestamp("2023-01-01T00:20Z")]
+
+
+@pytest.mark.parametrize("embargo", [-1, True, 1.5])
+def test_partition_rejects_invalid_embargo(embargo):
+    labels = pd.DataFrame({"decision_time": pd.to_datetime(["2023-01-01T00:00Z"], utc=True),
+                           "label_available_time": pd.to_datetime(["2023-01-01T00:00Z"], utc=True)})
+    with pytest.raises(ValueError, match="embargo_bars"):
+        partition_temporal_samples(labels, train_end=pd.Timestamp("2023-01-01T00:05Z"),
+                                   test_end=pd.Timestamp("2023-01-01T00:10Z"),
+                                   timeframe="5m", embargo_bars=embargo)
 
 
 def test_reject_policy_fails_missing_required_slots():

@@ -12,7 +12,9 @@ from alpha_lab_contracts.research_request_v2 import ResearchRequestV2
 from alpha_lab.data.availability import AvailabilityRuleRegistry
 from alpha_lab.data.dataset_builder import DatasetBuilderV2
 from alpha_lab.data.temporal_plan import DatasetBuildOptionsV1
-from alpha_lab.data.universe import FixedUniverse, HistoricalUniverse
+from alpha_lab.data.universe import DynamicUniverse, FixedUniverse, HistoricalUniverse
+from alpha_lab.data.market_panel import MarketPanel
+from alpha_lab.data.pit_labels import dynamic_membership_asof
 from data_engineering.sources.contracts import DatasetIdentity
 
 
@@ -40,7 +42,7 @@ class Resolver:
 
 def make_request():
     policy_raw = json.loads((Path(__file__).parents[2] / "alpha_lab_contracts/campaigns/example_campaign-v1.json").read_text())
-    raw = {"protocol_version": "2.0-research-request", "request_id": "cs-test", "campaign_id": "example_campaign", "policy_version": "1", "campaign_policy_sha256": policy_raw["policy_sha256"], "start": "2023-01-01T00:10:00Z", "end": "2023-01-01T00:25:00Z", "symbols": ["BTCUSDT", "ETHUSDT"], "timeframe": "5m", "mode": "cross_sectional", "data_types": ["futures_ohlcv"], "split": "discovery", "lookback_bars": 2, "label_horizon_bars": 2, "embargo_bars": 0}
+    raw = {"protocol_version": "2.0-research-request", "request_id": "cs-test", "campaign_id": "example_campaign", "policy_version": "1", "campaign_policy_sha256": policy_raw["policy_sha256"], "start": "2023-01-01T00:15:00Z", "end": "2023-01-01T00:25:00Z", "symbols": ["BTCUSDT", "ETHUSDT"], "timeframe": "5m", "mode": "cross_sectional", "data_types": ["futures_ohlcv"], "split": "discovery", "lookback_bars": 2, "label_horizon_bars": 2, "embargo_bars": 0}
     registry = FileCampaignPolicyRegistry()
     return ResearchRequestV2.from_dict(raw, registry), registry
 
@@ -59,6 +61,8 @@ def test_cs_membership_aligns_to_market_panel(tmp_path):
     assert worker.eligible.all()
     labels = result.evaluator_labels.frame
     assert {"symbol", "open_time", "label_value", "label_available_time"}.issubset(labels.columns)
+    valid = labels.loc[labels.label_valid]
+    assert (valid.label_end_time == valid.open_time + pd.Timedelta(minutes=15)).all()
 
 
 def test_cs_uses_point_in_time_historical_membership(tmp_path):
@@ -92,3 +96,22 @@ def test_missing_membership_follows_build_policy(tmp_path):
     assert result.report.issues[0]["code"] == "MISSING_MEMBERSHIP_HISTORY"
     with pytest.raises(ValueError, match="membership history"):
         build.build(request, options=DatasetBuildOptionsV1("reject", None, {}, {}, {}), universe=universe)
+
+
+def test_dynamic_membership_ignores_unavailable_older_observations():
+    times = pd.date_range("2025-01-01T00:00Z", periods=4, freq="5min")
+    index = pd.MultiIndex.from_product([times, ["BTCUSDT"]], names=["open_time", "symbol"])
+    base = pd.DataFrame({
+        "close": [10., 10., 10., 10.], "volume": [1.] * 4,
+        "available_time": times + pd.Timedelta(minutes=5, seconds=1),
+        "close_time": times + pd.Timedelta(minutes=5),
+    }, index=index)
+    base.loc[(times[2], "BTCUSDT"), "available_time"] = pd.Timestamp("2025-01-01T02:00Z")
+    changed = base.copy()
+    changed.loc[(times[2], "BTCUSDT"), "close"] = 1000000.
+    universe = DynamicUniverse("causal", ("BTCUSDT",), lookback=2, min_listing_bars=2,
+                               min_coverage=1., min_quote_volume=0.)
+    left = dynamic_membership_asof(universe, MarketPanel(base))
+    right = dynamic_membership_asof(universe, MarketPanel(changed))
+    assert left.loc[(times[3], "BTCUSDT")] == right.loc[(times[3], "BTCUSDT")]
+    assert not left.loc[(times[3], "BTCUSDT")]

@@ -72,6 +72,20 @@ def test_dataset_cli_does_not_mutate_panel_cli_compatibility(tmp_path, monkeypat
     assert panel_cli.read_bytes() == before
 
 
+def test_cli_does_not_substitute_catalog_quote_currency(tmp_path, monkeypatch):
+    request = request_file(tmp_path, "2026-02-01T00:00:00Z", "2026-02-01T01:00:00Z")
+    monkeypatch.setattr(cli, "list_datasets", lambda root: [{"manifest": {
+        "exchange": "binance", "market_type": "futures", "asset": "BTC",
+        "data_kind": "ohlcv", "timeframe": "5m", "exchange_symbol": "BTC/USDC:USDC",
+    }}])
+    raw = json.loads(request.read_text())
+    from alpha_lab_contracts.research_request_v2 import ResearchRequestV2
+    from alpha_lab_contracts.campaign_policy_v1 import FileCampaignPolicyRegistry
+    parsed = ResearchRequestV2.from_dict(raw, FileCampaignPolicyRegistry())
+    identities = cli._identity_map(parsed, "binance", tmp_path / "catalog")
+    assert identities["BTCUSDT"]["futures_ohlcv"]["exchange_symbol"] == "BTC/USDT:USDT"
+
+
 def test_dataset_cli_requires_explicit_cross_sectional_universe(tmp_path, monkeypatch):
     fake_builder(monkeypatch)
     request = request_file(tmp_path, "2026-02-01T00:00:00Z", "2026-02-01T01:00:00Z", mode="cross_sectional")

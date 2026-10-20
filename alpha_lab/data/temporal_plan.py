@@ -24,6 +24,7 @@ class TemporalPlanV1:
     label_extension_end: datetime
     timeframe: str
     label_extension_truncated: bool = False
+    warmup_truncated_bars: int = 0
 
 
 def build_temporal_plan(request: ResearchRequestV2, policy: CampaignPolicyV1) -> TemporalPlanV1:
@@ -35,7 +36,10 @@ def build_temporal_plan(request: ResearchRequestV2, policy: CampaignPolicyV1) ->
     if split is None or request.start < split.start or request.end > split.end:
         raise ValueError("request interval outside selected split")
     step = timedelta(seconds=timeframe_to_seconds(request.timeframe))
-    warmup_start = max(split.start, request.start - request.lookback_bars * step)
+    # OHLCV decisions occur after the bar closes, so one source slot before the
+    # requested decision interval is needed to supply its first in-range decision.
+    warmup_start = max(split.start, request.start - (request.lookback_bars + 1) * step)
+    available_warmup_bars = max(0, int((request.start - warmup_start) / step) - 1)
     requested_label_end = request.end + request.label_horizon_bars * step
     label_end = min(requested_label_end, split.end)
     return TemporalPlanV1(
@@ -44,6 +48,7 @@ def build_temporal_plan(request: ResearchRequestV2, policy: CampaignPolicyV1) ->
         warmup_start=warmup_start, warmup_end=request.start,
         label_extension_start=request.start, label_extension_end=label_end,
         timeframe=request.timeframe, label_extension_truncated=requested_label_end > split.end,
+        warmup_truncated_bars=max(0, request.lookback_bars - available_warmup_bars),
     )
 
 
@@ -82,6 +87,8 @@ def partition_temporal_samples(
     labels: pd.DataFrame, *, train_end: pd.Timestamp, test_end: pd.Timestamp,
     timeframe: str, embargo_bars: int,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
+    if type(embargo_bars) is not int or embargo_bars < 0:
+        raise ValueError("embargo_bars must be a nonnegative integer")
     if not {"decision_time", "label_available_time"}.issubset(labels.columns):
         raise ValueError("labels require decision_time and label_available_time")
     if train_end.tzinfo is None or test_end.tzinfo is None or train_end >= test_end:

@@ -66,30 +66,50 @@ class AvailabilityRuleV1:
         return hashlib.sha256(json.dumps(raw, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class AvailabilityEvidenceV1:
     dataset_id: str
     manifest_sha256: str
-    rows: pd.DataFrame
+    _rows: pd.DataFrame
     evidence_sha256: str | None = None
 
-    def __post_init__(self) -> None:
-        if not _DIGEST.fullmatch(self.manifest_sha256):
+    def __init__(self, dataset_id: str, manifest_sha256: str, rows: pd.DataFrame,
+                 evidence_sha256: str | None = None):
+        if not _DIGEST.fullmatch(manifest_sha256):
             raise ValueError("evidence manifest digest must be SHA-256")
-        rows = self.rows.copy(deep=True)
+        if not dataset_id:
+            raise ValueError("evidence dataset ID is required")
+        rows = rows.copy(deep=True)
         if not {"row_key", "available_time"}.issubset(rows.columns):
             raise ValueError("evidence rows require row_key and available_time")
+        if not rows.row_key.map(lambda value: isinstance(value, str)).all():
+            raise ValueError("evidence row keys must be stable string event-time keys")
         if rows.row_key.isna().any() or rows.row_key.duplicated().any():
             raise ValueError("evidence row keys must be unique and non-null")
         rows["available_time"] = _utc_series(rows.available_time, "available_time")
         if rows.available_time.isna().any():
             raise ValueError("evidence availability times cannot be null")
-        if self.evidence_sha256 is None:
-            canonical = rows.assign(available_time=rows.available_time.astype(str)).sort_values("row_key").to_json(orient="records")
-            object.__setattr__(self, "evidence_sha256", hashlib.sha256(canonical.encode()).hexdigest())
-        elif not _DIGEST.fullmatch(self.evidence_sha256):
+        digest = hashlib.sha256(self._canonical(rows)).hexdigest()
+        if evidence_sha256 is not None and (not _DIGEST.fullmatch(evidence_sha256) or evidence_sha256 != digest):
             raise ValueError("evidence digest must be SHA-256")
-        object.__setattr__(self, "rows", rows)
+        object.__setattr__(self, "dataset_id", dataset_id)
+        object.__setattr__(self, "manifest_sha256", manifest_sha256)
+        object.__setattr__(self, "_rows", rows)
+        object.__setattr__(self, "evidence_sha256", digest)
+
+    @staticmethod
+    def _canonical(rows: pd.DataFrame) -> bytes:
+        normalized = rows.assign(available_time=rows.available_time.astype(str)).sort_values("row_key")
+        return normalized.to_json(orient="records", date_format="iso").encode()
+
+    @property
+    def rows(self) -> pd.DataFrame:
+        return self._rows.copy(deep=True)
+
+    def verify(self) -> None:
+        actual = hashlib.sha256(self._canonical(self._rows)).hexdigest()
+        if actual != self.evidence_sha256:
+            raise ValueError("availability evidence content digest mismatch")
 
 
 class AvailabilityRuleRegistry:
@@ -144,13 +164,16 @@ def assign_availability(
     else:
         if evidence.dataset_id != identity.dataset_id() or evidence.manifest_sha256 != manifest_sha256:
             raise ValueError("availability evidence does not match pinned dataset manifest")
-        expected = pd.DataFrame({"row_key": list(range(len(frame)))})
+        evidence.verify()
+        row_keys = frame[rule.event_time_field].map(lambda value: pd.Timestamp(value).tz_convert("UTC").isoformat())
         evidence_rows = evidence.rows
-        if len(evidence_rows) != len(frame) or set(evidence_rows.row_key) != set(expected.row_key):
-            raise ValueError("availability evidence must cover every observation row exactly once")
+        keys = set(row_keys)
+        evidence_rows = evidence_rows.loc[evidence_rows.row_key.isin(keys)]
+        if len(evidence_rows) != len(frame) or set(evidence_rows.row_key) != keys:
+            raise ValueError("availability evidence must cover every observation row by stable event-time key")
         evidence_rows = evidence_rows.set_index("row_key")
         frame["available_time"] = pd.to_datetime(
-            [evidence_rows.loc[index, "available_time"] for index in range(len(frame))], utc=True
+            [evidence_rows.loc[key, "available_time"] for key in row_keys], utc=True
         )
         frame["pit_status"] = "EVIDENCED"
         frame["availability_evidence_sha256"] = evidence.evidence_sha256

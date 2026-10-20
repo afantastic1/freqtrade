@@ -48,3 +48,22 @@ def test_publish_rejects_symlinked_output_paths(tmp_path):
     alias.symlink_to(outside, target_is_directory=True)
     with pytest.raises(ValueError, match="symlink"):
         publish_dataset(result(), alias)
+
+
+def test_publish_revalidates_existing_manifest_identity(tmp_path):
+    artifact = publish_dataset(result(), tmp_path)
+    document = json.loads(artifact.manifest_path.read_text())
+    document["build_fingerprint"] = "0" * 64
+    artifact.manifest_path.write_text(json.dumps(document))
+    with pytest.raises(ValueError, match="conflicting"):
+        publish_dataset(result(), tmp_path)
+
+
+def test_publish_rejects_symlinked_existing_manifest(tmp_path):
+    artifact = publish_dataset(result(), tmp_path)
+    target = tmp_path / "manifest-copy.json"
+    target.write_bytes(artifact.manifest_path.read_bytes())
+    artifact.manifest_path.unlink()
+    artifact.manifest_path.symlink_to(target)
+    with pytest.raises(ValueError, match="symlink"):
+        publish_dataset(result(), tmp_path)

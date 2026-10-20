@@ -98,11 +98,17 @@ def publish_dataset(result: DatasetBuildResultV2, output_root: Path) -> DatasetA
     }
     for name, data in (("worker", worker), ("labels", labels), ("report", report), ("manifest", manifest_bytes)):
         path = paths[name]
+        _safe_path(path)
         if name == "manifest" and path.exists():
             existing = json.loads(path.read_text())
-            existing.pop("build_fingerprint", None)
-            if dataset_manifest_fingerprint(existing) != fingerprint:
+            embedded = existing.get("build_fingerprint")
+            unsigned = dict(existing)
+            unsigned.pop("build_fingerprint", None)
+            if embedded != fingerprint or dataset_manifest_fingerprint(unsigned) != fingerprint:
                 raise ValueError("conflicting manifest bytes")
+            schema_errors = list(Draft202012Validator(schema, format_checker=FormatChecker()).iter_errors(existing))
+            if schema_errors:
+                raise ValueError("existing dataset manifest is invalid")
         else:
             _atomic_create(path, data)
     return DatasetArtifactV1(

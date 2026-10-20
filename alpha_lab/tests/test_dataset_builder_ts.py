@@ -45,7 +45,7 @@ def test_builder_ts_constructs_btc_dataset_from_request(tmp_path):
     builder, request, options, _ = setup_build(tmp_path)
     result = builder.build(request, options=options)
     assert result.artifact is not None
-    assert len(result.worker_input.frame) == 4
+    assert len(result.worker_input.frame) == 3
     assert len(result.evaluator_labels.frame) == 2
     source = result.manifest["sources"][0]
     assert source["manifest_sha256"]
@@ -90,6 +90,55 @@ def test_builder_ts_rejects_wholly_missing_primary_source_in_preserve_mode(tmp_p
         builder.build(request, options=options)
 
 
+def test_builder_records_missing_first_decision_at_selected_split_start(tmp_path):
+    builder, request, options, _ = setup_build(
+        tmp_path, request_start="2023-01-01T00:00:00Z",
+        request_end="2023-01-01T00:10:00Z", acceptance=True,
+    )
+    result = builder.build(request, options=options)
+    missing = [issue for issue in result.report.issues if issue["code"] == "MISSING_DECISION_SLOTS"]
+    assert missing
+    assert missing[0]["decision_times"] == ["2023-01-01T00:00:01+00:00"]
+
+
+def test_label_availability_waits_for_late_entry_observation():
+    from alpha_lab.data.dataset import MarketData
+    from alpha_lab.data.pit_labels import forward_returns_v2
+    opens = pd.date_range("2025-01-01T00:00:00Z", periods=4, freq="5min")
+    frame = pd.DataFrame({
+        "open_time": opens,
+        "close_time": opens + pd.Timedelta(minutes=5),
+        "available_time": pd.to_datetime(["2025-01-01T00:05:01Z", "2025-01-01T02:00:00Z",
+                                           "2025-01-01T00:15:01Z", "2025-01-01T00:20:01Z"], utc=True),
+        "open": [100., 101., 102., 103.], "high": [101., 102., 103., 104.],
+        "low": [99., 100., 101., 102.], "close": [100.5, 101.5, 102.5, 103.5],
+        "volume": [1.] * 4,
+    })
+    result = forward_returns_v2(MarketData("BTCUSDT", "5m", frame), horizon=2)
+    assert result.label_available_time.iloc[0] == pd.Timestamp("2025-01-01T02:00:00Z")
+
+
+def test_registered_auxiliary_max_age_cannot_be_weakened():
+    from types import SimpleNamespace
+    from alpha_lab.data.dataset_builder import _effective_max_age
+    source = SimpleNamespace(quality={"availability_max_age_seconds": 300})
+    options = DatasetBuildOptionsV1("preserve", None, {}, {}, {"funding_rate": 3600})
+    assert _effective_max_age(source, "funding_rate", options) == pd.Timedelta(seconds=300)
+    no_override = DatasetBuildOptionsV1("preserve", None, {}, {}, {})
+    assert _effective_max_age(source, "funding_rate", no_override) == pd.Timedelta(seconds=300)
+
+
+def test_preserve_keeps_requested_missing_auxiliary_columns(tmp_path):
+    builder, request, options, _ = setup_build(tmp_path)
+    request = replace(request, data_types=("futures_ohlcv", "funding_rate"))
+    result = builder.build(request, options=options)
+    worker = result.worker_input.frame
+    assert "futures_funding_rate_funding_rate" in worker
+    assert "futures_funding_rate_is_available" in worker
+    assert not worker.futures_funding_rate_is_available.any()
+    assert any(issue["code"] == "MISSING_REQUESTED_SOURCE" for issue in result.report.issues)
+
+
 @pytest.mark.parametrize(
     ("data_type", "data_kind", "value_column", "feature"),
     [
@@ -99,7 +148,10 @@ def test_builder_ts_rejects_wholly_missing_primary_source_in_preserve_mode(tmp_p
     ],
 )
 def test_builder_ts_auxiliary_events_join_on_availability_time(tmp_path, data_type, data_kind, value_column, feature):
-    builder, request, options, _ = setup_build(tmp_path, acceptance=(data_type in {"open_interest", "spot_ohlcv"}))
+    builder, request, options, _ = setup_build(
+        tmp_path, request_end="2023-01-01T00:25:00Z",
+        acceptance=(data_type in {"open_interest", "spot_ohlcv"}),
+    )
     if data_type == "spot_ohlcv":
         options = replace(options, primary_data_type="futures_ohlcv")
     original = builder.resolver

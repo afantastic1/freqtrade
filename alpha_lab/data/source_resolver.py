@@ -100,6 +100,12 @@ class DatasetSourceResolver:
                 evidence = self.availability_evidence.get(f"{dataset_id}:{pin}", self.availability_evidence.get(dataset_id))
                 available = assign_availability(snapshot.observations, identity, pin, rule, evidence)
                 quality = dict(snapshot.quality)
+                quality["availability_max_age_seconds"] = (
+                    rule.max_age.total_seconds() if rule.max_age is not None else None
+                )
+                quality["availability_fixed_delay_seconds"] = (
+                    rule.fixed_delay.total_seconds() if rule.fixed_delay is not None else None
+                )
                 quality["selected_partitions"] = [
                     {key: part[key] for key in ("source_root_id", "source_path", "start", "end", "source_sha256", "fingerprint") if key in part}
                     for part in snapshot.manifest["partitions"]

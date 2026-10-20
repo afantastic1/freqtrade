@@ -25,7 +25,7 @@ def test_fixed_delay_ohlcv_uses_close_time_plus_registered_delay():
 def test_evidence_must_match_pinned_dataset_and_every_row():
     rule = AvailabilityRuleV1("source", IDENTITY, mode="source_evidence", event_time_field="date")
     frame = pd.DataFrame({"date": pd.to_datetime(["2025-01-01T00:00:00Z", "2025-01-01T00:05:00Z"], utc=True)})
-    evidence = AvailabilityEvidenceV1(IDENTITY.dataset_id(), "b" * 64, pd.DataFrame({"row_key": [0], "available_time": pd.to_datetime(["2025-01-01T00:06:00Z"], utc=True)}))
+    evidence = AvailabilityEvidenceV1(IDENTITY.dataset_id(), "b" * 64, pd.DataFrame({"row_key": ["2025-01-01T00:00:00+00:00"], "available_time": pd.to_datetime(["2025-01-01T00:06:00Z"], utc=True)}))
     with pytest.raises(ValueError, match="manifest|row"):
         assign_availability(frame, IDENTITY, "a" * 64, rule, evidence)
 
@@ -53,6 +53,22 @@ def test_unverified_event_is_rejected_from_worker_view():
 
 def test_evidence_rows_reject_duplicate_or_naive_times():
     with pytest.raises(ValueError):
-        AvailabilityEvidenceV1("dataset", "a" * 64, pd.DataFrame({"row_key": [1, 1], "available_time": pd.to_datetime(["2025-01-01T00:00:00Z"] * 2, utc=True)}))
+        AvailabilityEvidenceV1("dataset", "a" * 64, pd.DataFrame({"row_key": ["same", "same"], "available_time": pd.to_datetime(["2025-01-01T00:00:00Z"] * 2, utc=True)}))
     with pytest.raises(ValueError):
-        AvailabilityEvidenceV1("dataset", "a" * 64, pd.DataFrame({"row_key": [1], "available_time": [pd.Timestamp("2025-01-01")]}))
+        AvailabilityEvidenceV1("dataset", "a" * 64, pd.DataFrame({"row_key": ["one"], "available_time": [pd.Timestamp("2025-01-01")]}))
+
+
+def test_evidence_is_defensive_and_row_keys_survive_snapshot_slicing():
+    rule = AvailabilityRuleV1("source", IDENTITY, mode="source_evidence", event_time_field="date")
+    dates = pd.to_datetime(["2025-01-01T00:00:00Z", "2025-01-01T00:05:00Z"], utc=True)
+    frame = pd.DataFrame({"date": dates})
+    evidence_rows = pd.DataFrame({
+        "row_key": [stamp.isoformat() for stamp in dates],
+        "available_time": pd.to_datetime(["2025-01-01T00:01:00Z", "2025-01-01T00:06:00Z"], utc=True),
+    })
+    evidence = AvailabilityEvidenceV1(IDENTITY.dataset_id(), "a" * 64, evidence_rows)
+    exposed = evidence.rows
+    exposed.loc[1, "available_time"] = pd.Timestamp("2020-01-01T00:00Z")
+    got = assign_availability(frame.iloc[1:], IDENTITY, "a" * 64, rule, evidence)
+    assert got.available_time.iloc[0] == pd.Timestamp("2025-01-01T00:06:00Z")
+    assert got.availability_evidence_sha256.iloc[0] == evidence.evidence_sha256

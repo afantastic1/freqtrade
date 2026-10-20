@@ -70,5 +70,8 @@ python -m alpha_lab.dataset_cli dataset build \
 
 The request controls the date interval, timeframe, symbols, split, and requested
 data types. Output worker inputs, evaluator labels, reports, and manifests are
-immutable Parquet/JSON artifacts. The legacy `panel_cli` keeps its historical
-fixed-window behavior.
+immutable Parquet/JSON artifacts. The CLI uses code-owned versioned availability
+assumptions: one second after OHLCV close and 60 seconds after sparse event
+timestamps. Callers cannot override publication timing or supply an unregistered
+evidence sidecar through this command. The legacy `panel_cli` keeps its
+historical fixed-window behavior.
