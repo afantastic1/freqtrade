@@ -1,0 +1,14 @@
+{
+  "files": {
+    ".github/CODEOWNERS": "216a2c4645b24a11ddad54e0483c9825a2fede7753409d47bf55f56bbdff644b",
+    ".github/workflows/alpha-lab-freeze.yml": "e6bb4c8493fe1505759908ce38b91cfd3c0367d9587562ca1d1adb3eb33e1e5f",
+    ".github/workflows/alpha-lab-python-service.yml": "a9f4ee28b87d15034a2827a67086aee6d726fb18f59225ae355cb01c6f9a217e",
+    "alpha_lab_service/governance.py": "5857eadc456dc0ad010951b82c2facb13e677a50ffbf6fe7dccdee9b0c8931ad",
+    "alpha_lab_service/manifest.py": "6a70c8d9f4dc7e7ecb015b9536cea7c9ab884dc0688af666c37bf76d4c6cba4c",
+    "alpha_lab_service/protected-files.json": "5e4fe90cb6ebfc1d4638d7bf3dff67bbe4759a9746840173be6c4866a049ac85",
+    "scripts/alpha_lab_admission_gate.py": "04fc6f1564a0ed32ec73a06adbe688b6dd2c514a59c27d22f2749e005d464332"
+  },
+  "hash": "sha256",
+  "kind": "governance-boundary",
+  "manifest_version": "1.3-governance"
+}

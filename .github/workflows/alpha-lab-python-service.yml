@@ -5,22 +5,26 @@ on:
     branches: ["fix/**", "codex/**", "my_dev"]
     paths:
       - "alpha_lab_service/**"
+      - "alpha_lab_contracts/**"
       - "containers/alpha-lab-factor-worker/**"
       - "scripts/alpha_lab_admission_gate.py"
       - ".github/CODEOWNERS"
       - ".github/workflows/alpha-lab-freeze.yml"
       - ".github/workflows/alpha-lab-python-service.yml"
-      - "alpha_lab/freeze-manifest-v1.2.json"
+      - "alpha_lab/freeze-manifest-v1.3.json"
+      - "alpha_lab_service/protocol-manifest-v2.json"
       - "docs/alpha_lab/python-factor-*.md"
   pull_request:
     paths:
       - "alpha_lab_service/**"
+      - "alpha_lab_contracts/**"
       - "containers/alpha-lab-factor-worker/**"
       - "scripts/alpha_lab_admission_gate.py"
       - ".github/CODEOWNERS"
       - ".github/workflows/alpha-lab-freeze.yml"
       - ".github/workflows/alpha-lab-python-service.yml"
-      - "alpha_lab/freeze-manifest-v1.2.json"
+      - "alpha_lab/freeze-manifest-v1.3.json"
+      - "alpha_lab_service/protocol-manifest-v2.json"
       - "docs/alpha_lab/python-factor-*.md"
 
 permissions:
@@ -44,7 +48,7 @@ jobs:
         run: |
           docker build --pull=false --build-arg PIP_INDEX_URL=https://pypi.org/simple -t alpha-lab-factor-worker:ci containers/alpha-lab-factor-worker
           echo "ALPHA_LAB_WORKER_IMAGE=$(docker image inspect --format '{{.Id}}' alpha-lab-factor-worker:ci)" >> "$GITHUB_ENV"
-      - name: Verify v1.2 governance and service manifests
+      - name: Verify v1.3 governance and service manifests
         run: uv run --project alpha_lab_service --locked python -m alpha_lab_service.governance
-      - name: Run protocol, store, MCP, causal and actual-container tests
+      - name: Run protocol, contract, store, MCP, causal and actual-container tests
         run: uv run --project alpha_lab_service --locked python -m pytest -q alpha_lab_service/tests/test_worker_container.py alpha_lab_service/tests/test_end_to_end.py alpha_lab_service/tests
