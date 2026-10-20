@@ -315,3 +315,10 @@ def validate_dataset(
         status = "INVALID" if issues else "MISSING"
     return {"dataset_id": dataset_id, "manifest": manifest, "status": status,
             "quality": quality, "issues": issues}
+
+
+def get_coverage(root: Path, dataset_id: str, start: datetime, end: datetime, *, source_roots):
+    """Re-export the interval query alongside the catalog APIs."""
+    from .dataset_coverage import get_coverage as query_coverage
+
+    return query_coverage(root, dataset_id, start, end, source_roots=source_roots)

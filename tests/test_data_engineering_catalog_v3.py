@@ -420,6 +420,132 @@ def test_validate_dataset_detects_partition_fingerprint_mismatch(tmp_path):
     assert "PARTITION_FINGERPRINT_MISMATCH" in {issue["code"] for issue in result["issues"]}
 
 
+def test_get_coverage_returns_missing_for_unknown_dataset(tmp_path):
+    coverage = importlib.import_module("data_engineering.dataset_coverage")
+    result = coverage.get_coverage(
+        tmp_path / "catalog", "unknown", datetime.fromisoformat("2025-01-01T00:00:00+00:00"),
+        datetime.fromisoformat("2025-01-01T01:00:00+00:00"), source_roots={},
+    )
+    assert result["status"] == "MISSING"
+    assert result["missing_observations"] == 0
+
+
+def test_get_coverage_reports_dense_gaps_and_exclusive_end(tmp_path):
+    catalog = importlib.import_module("data_engineering.catalog_v3")
+    assert hasattr(catalog, "get_coverage"), "catalog must re-export coverage query"
+    record, source_root, _ = _registered_feather(
+        tmp_path, _ohlcv_frame([
+            "2025-01-01T00:00:00Z", "2025-01-01T00:05:00Z", "2025-01-01T00:15:00Z"
+        ])
+    )
+    result = catalog.get_coverage(
+        tmp_path / "catalog", record["manifest"]["dataset_id"],
+        datetime.fromisoformat("2025-01-01T00:00:00+00:00"),
+        datetime.fromisoformat("2025-01-01T00:15:00+00:00"),
+        source_roots={"binance-futures": source_root},
+    )
+    assert result["status"] == "PARTIAL"
+    assert result["observed_count"] == 2
+    assert result["missing_observations"] == 1
+    assert result["observed_intervals"] == [
+        {"start": "2025-01-01T00:00:00Z", "end": "2025-01-01T00:10:00Z"}
+    ]
+    assert result["missing_intervals"] == [
+        {"start": "2025-01-01T00:10:00Z", "end": "2025-01-01T00:15:00Z"}
+    ]
+
+
+def test_get_coverage_reports_available_complete_dense_interval(tmp_path):
+    catalog = importlib.import_module("data_engineering.catalog_v3")
+    record, source_root, _ = _registered_feather(
+        tmp_path, _ohlcv_frame(["2025-01-01T00:00:00Z", "2025-01-01T00:05:00Z"])
+    )
+    result = catalog.get_coverage(
+        tmp_path / "catalog", record["manifest"]["dataset_id"],
+        datetime.fromisoformat("2025-01-01T00:00:00+00:00"),
+        datetime.fromisoformat("2025-01-01T00:10:00+00:00"),
+        source_roots={"binance-futures": source_root},
+    )
+    assert result["status"] == "AVAILABLE"
+    assert result["missing_observations"] == 0
+    assert result["missing_intervals"] == []
+
+
+def test_get_coverage_reports_leading_and_trailing_gaps(tmp_path):
+    catalog = importlib.import_module("data_engineering.catalog_v3")
+    record, source_root, _ = _registered_feather(
+        tmp_path, _ohlcv_frame(["2025-01-01T00:05:00Z", "2025-01-01T00:10:00Z"])
+    )
+    result = catalog.get_coverage(
+        tmp_path / "catalog", record["manifest"]["dataset_id"],
+        datetime.fromisoformat("2025-01-01T00:00:00+00:00"),
+        datetime.fromisoformat("2025-01-01T00:20:00+00:00"),
+        source_roots={"binance-futures": source_root},
+    )
+    assert result["status"] == "PARTIAL"
+    assert result["missing_intervals"] == [
+        {"start": "2025-01-01T00:00:00Z", "end": "2025-01-01T00:05:00Z"},
+        {"start": "2025-01-01T00:15:00Z", "end": "2025-01-01T00:20:00Z"},
+    ]
+
+
+def test_get_coverage_bounds_gap_list_and_reports_total(tmp_path):
+    catalog = importlib.import_module("data_engineering.catalog_v3")
+    dates = pd.date_range("2025-01-01T00:00:00Z", periods=201, freq="10min")
+    record, source_root, _ = _registered_feather(
+        tmp_path, _ohlcv_frame(dates)
+    )
+    result = catalog.get_coverage(
+        tmp_path / "catalog", record["manifest"]["dataset_id"],
+        datetime.fromisoformat("2025-01-01T00:00:00+00:00"),
+        datetime.fromisoformat("2025-01-02T10:00:00+00:00"),
+        source_roots={"binance-futures": source_root},
+    )
+    assert result["missing_interval_count"] == 201
+    assert len(result["missing_intervals"]) == 100
+    assert result["missing_observations"] == 207
+
+
+def test_get_coverage_returns_partial_observed_only_for_sparse_events(tmp_path):
+    adapter = _freqtrade_feather_module()
+    source_root = tmp_path / "events"
+    source_root.mkdir()
+    source = source_root / "BTC_USDT_USDT-1h-funding_rate.feather"
+    pd.DataFrame({
+        "date": pd.to_datetime(["2025-01-01T00:00:00Z", "2025-01-01T08:00:00Z"], utc=True),
+        "funding_rate": [0.001, -0.001],
+    }).to_feather(source)
+    record = adapter.register_feather_file(
+        tmp_path / "catalog", source_root_id="binance-futures", source_root=source_root,
+        relative_path=Path(source.name), exchange="binance", market_type="futures", asset="BTC",
+        exchange_symbol="BTC/USDT:USDT", data_kind="funding_rate", timeframe="1h",
+        source="freqtrade-local",
+    )
+    catalog = importlib.import_module("data_engineering.catalog_v3")
+    result = catalog.get_coverage(
+        tmp_path / "catalog", record["manifest"]["dataset_id"],
+        datetime.fromisoformat("2025-01-01T00:00:00+00:00"),
+        datetime.fromisoformat("2025-01-01T09:00:00+00:00"),
+        source_roots={"binance-futures": source_root},
+    )
+    assert result["status"] == "PARTIAL"
+    assert result["coverage_basis"] == "observed_only"
+    assert result["observed_count"] == 2
+    assert result["missing_intervals"] == []
+
+
+def test_get_coverage_rejects_empty_or_naive_intervals(tmp_path):
+    catalog = importlib.import_module("data_engineering.catalog_v3")
+    assert hasattr(catalog, "get_coverage"), "catalog must re-export coverage query"
+    start = datetime.fromisoformat("2025-01-01T00:00:00+00:00")
+    with pytest.raises(ValueError, match="start.*end"):
+        catalog.get_coverage(tmp_path, "x", start, start, source_roots={})
+    with pytest.raises(ValueError, match="timezone"):
+        catalog.get_coverage(tmp_path, "x", datetime(2025, 1, 1),
+                             datetime.fromisoformat("2025-01-02T00:00:00+00:00"),
+                             source_roots={})
+
+
 def test_data_kind_registry_declares_required_contract_fields():
     module_spec = importlib.util.find_spec("data_engineering.data_kind_registry")
     assert module_spec is not None, "v3 data-kind registry module must exist"
