@@ -10,7 +10,7 @@ from pathlib import Path, PurePosixPath
 import tempfile
 from functools import lru_cache
 from importlib.resources import files
-from typing import Any
+from typing import Any, Mapping
 
 from jsonschema import Draft202012Validator, FormatChecker
 import pandas as pd
@@ -248,7 +248,7 @@ def list_datasets(
 
 
 def validate_dataset(
-    root: Path, dataset_id: str, *, source_roots: dict[str, Path]
+    root: Path, dataset_id: str, *, source_roots: Mapping[str, Path]
 ) -> dict[str, Any]:
     """Verify the latest registered version against its configured source bytes."""
     records = [
@@ -317,7 +317,14 @@ def validate_dataset(
             "quality": quality, "issues": issues}
 
 
-def get_coverage(root: Path, dataset_id: str, start: datetime, end: datetime, *, source_roots):
+def get_coverage(
+    root: Path,
+    dataset_id: str,
+    start: datetime,
+    end: datetime,
+    *,
+    source_roots: Mapping[str, Path],
+):
     """Re-export the interval query alongside the catalog APIs."""
     from .dataset_coverage import get_coverage as query_coverage
 

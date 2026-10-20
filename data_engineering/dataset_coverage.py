@@ -115,7 +115,7 @@ def get_coverage(
 
     observations = pd.concat(source_frames, ignore_index=True).sort_values("date", kind="stable")
     observations = observations.drop_duplicates("date", keep="first")
-    stamps = pd.DatetimeIndex(observations["date"])
+    stamps = pd.DatetimeIndex(observations["date"]).as_unit("ns")
     base["observed_count"] = len(stamps)
     seconds = [float((right - left).total_seconds()) for left, right in zip(stamps[:-1], stamps[1:])]
     if seconds:

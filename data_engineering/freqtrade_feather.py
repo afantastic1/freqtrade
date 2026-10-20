@@ -8,6 +8,7 @@ import json
 import math
 from pathlib import Path, PurePosixPath
 import re
+import struct
 from typing import Any
 
 import pandas as pd
@@ -142,31 +143,60 @@ def _validate_columns(frame: pd.DataFrame, data_kind: str) -> None:
 
 
 def _frame_fingerprint(frame: pd.DataFrame) -> str:
+    """Hash canonical, date-sorted column buffers without Python row iteration."""
     columns = sorted(frame.columns)
-    records = []
-    for _, row in frame[columns].sort_values("date", kind="stable").iterrows():
-        record = {}
-        for column in columns:
-            value = row[column]
-            if column == "date":
-                value = _iso(value)
-            elif pd.isna(value):
-                value = None
-            elif isinstance(value, (float, int)) or hasattr(value, "item"):
-                scalar = value.item() if hasattr(value, "item") else value
-                if isinstance(scalar, float):
-                    if not math.isfinite(scalar):
-                        value = str(scalar)
-                    else:
-                        value = scalar
-                else:
-                    value = scalar
-            else:
-                value = str(value)
-            record[column] = value
-        records.append(record)
-    payload = json.dumps(records, sort_keys=True, separators=(",", ":"), allow_nan=False)
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    ordered = frame[columns].sort_values("date", kind="stable")
+    digest = hashlib.sha256(b"freqtrade-frame-fingerprint-v2\0")
+    digest.update(json.dumps(columns, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+    for column in columns:
+        name = column.encode("utf-8")
+        digest.update(struct.pack(">I", len(name)))
+        digest.update(name)
+        series = ordered[column]
+        digest.update(struct.pack(">Q", len(series)))
+        if column == "date":
+            values = pd.to_datetime(series, errors="raise", utc=True).dt.as_unit("ns").astype("int64")
+            payload = values.to_numpy(dtype="<i8", copy=False).tobytes()
+            digest.update(b"timestamp-ns\0")
+            digest.update(payload)
+        elif pd.api.types.is_bool_dtype(series.dtype):
+            digest.update(b"bool\0")
+            digest.update(series.to_numpy(dtype="uint8", copy=False).tobytes())
+        elif pd.api.types.is_integer_dtype(series.dtype):
+            is_unsigned = pd.api.types.is_unsigned_integer_dtype(series.dtype)
+            digest.update(b"unsigned-integer\0" if is_unsigned else b"signed-integer\0")
+            nulls = series.isna().to_numpy(dtype="uint8", copy=False)
+            values = series.fillna(0).to_numpy(dtype="<u8" if is_unsigned else "<i8", copy=False)
+            digest.update(nulls.tobytes())
+            digest.update(values.tobytes())
+        elif pd.api.types.is_float_dtype(series.dtype):
+            digest.update(b"float64\0")
+            nulls = series.isna().to_numpy(dtype="uint8", copy=False)
+            values = series.to_numpy(dtype="<f8", na_value=0.0, copy=True)
+            digest.update(nulls.tobytes())
+            digest.update(values.tobytes())
+        elif pd.api.types.is_numeric_dtype(series.dtype):
+            digest.update(b"numeric\0")
+            for value in series.tolist():
+                encoded = str(value).encode("ascii")
+                digest.update(struct.pack(">I", len(encoded)))
+                digest.update(encoded)
+        else:
+            digest.update(b"json-values\0")
+            for value in series.tolist():
+                if hasattr(value, "item"):
+                    value = value.item()
+                if pd.isna(value):
+                    value = None
+                elif not isinstance(value, (str, int, float, bool, type(None))):
+                    value = str(value)
+                elif isinstance(value, float) and not math.isfinite(value):
+                    value = str(value)
+                encoded = json.dumps(value, ensure_ascii=False, allow_nan=False,
+                                     separators=(",", ":")).encode("utf-8")
+                digest.update(struct.pack(">I", len(encoded)))
+                digest.update(encoded)
+    return digest.hexdigest()
 
 
 def _month_start(timestamp: pd.Timestamp) -> pd.Timestamp:

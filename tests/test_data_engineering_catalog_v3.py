@@ -261,6 +261,7 @@ def test_validate_observations_marks_missing_candle_as_partial():
     [
         (["2025-01-01T00:00:00Z", "2025-01-01T00:06:00Z"], "5m", "TIMEFRAME_MISALIGNED"),
         (["2025-01-01T00:00:00", "2025-01-01T00:05:00"], "5m", "NAIVE_TIMESTAMP"),
+        (["2025-01-01T01:00:00+01:00", "2025-01-01T01:05:00+01:00"], "5m", "NON_UTC_TIMESTAMP"),
     ],
 )
 def test_validate_observations_rejects_misaligned_or_naive_timestamps(dates, timeframe, code):
@@ -469,6 +470,21 @@ def test_get_coverage_reports_available_complete_dense_interval(tmp_path):
     assert result["status"] == "AVAILABLE"
     assert result["missing_observations"] == 0
     assert result["missing_intervals"] == []
+
+
+def test_get_coverage_normalizes_source_timestamp_resolution(tmp_path):
+    catalog = importlib.import_module("data_engineering.catalog_v3")
+    frame = _ohlcv_frame(["2025-01-01T00:00:00Z", "2025-01-01T00:05:00Z"])
+    frame["date"] = frame["date"].dt.as_unit("us")
+    record, source_root, _ = _registered_feather(tmp_path, frame)
+    result = catalog.get_coverage(
+        tmp_path / "catalog", record["manifest"]["dataset_id"],
+        datetime.fromisoformat("2025-01-01T00:00:00+00:00"),
+        datetime.fromisoformat("2025-01-01T00:10:00+00:00"),
+        source_roots={"binance-futures": source_root},
+    )
+    assert result["status"] == "AVAILABLE"
+    assert result["missing_observations"] == 0
 
 
 def test_get_coverage_reports_leading_and_trailing_gaps(tmp_path):
