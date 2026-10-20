@@ -1,9 +1,13 @@
 import importlib.util
 import importlib
 from copy import deepcopy
+from datetime import datetime, timezone
+import hashlib
 import json
 from importlib.resources import files
+from pathlib import Path
 
+import pandas as pd
 import pytest
 
 from jsonschema import Draft202012Validator
@@ -47,6 +51,173 @@ def _v3_catalog_module():
     module_spec = importlib.util.find_spec("data_engineering.catalog_v3")
     assert module_spec is not None, "v3 catalog module must exist"
     return importlib.import_module("data_engineering.catalog_v3")
+
+
+def _freqtrade_feather_module():
+    module_spec = importlib.util.find_spec("data_engineering.freqtrade_feather")
+    assert module_spec is not None, "Freqtrade Feather adapter must exist"
+    return importlib.import_module("data_engineering.freqtrade_feather")
+
+
+def _ohlcv_frame(dates):
+    return pd.DataFrame(
+        {
+            "date": pd.to_datetime(dates, utc=True),
+            "open": [100.0] * len(dates),
+            "high": [101.0] * len(dates),
+            "low": [99.0] * len(dates),
+            "close": [100.5] * len(dates),
+            "volume": [2.0] * len(dates),
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    ("filename", "market_type", "data_kind", "expected_symbol"),
+    [
+        ("BTC_USDT_USDT-5m-futures.feather", "futures", "ohlcv", "BTC/USDT:USDT"),
+        ("BTC_USDT_USDT-1h-funding_rate.feather", "futures", "funding_rate", "BTC/USDT:USDT"),
+        ("BTC_USDT_USDT-1h-open_interest.feather", "futures", "open_interest", "BTC/USDT:USDT"),
+        ("BTC_USDT-5m.feather", "spot", "ohlcv", "BTC/USDT"),
+    ],
+)
+def test_discover_feather_datasets_parses_supported_freqtrade_names(
+    tmp_path, filename, market_type, data_kind, expected_symbol
+):
+    adapter = _freqtrade_feather_module()
+    path = tmp_path / filename
+    dates = ["2025-01-01T00:00:00Z", "2025-01-01T00:05:00Z"]
+    if data_kind == "ohlcv":
+        frame = _ohlcv_frame(dates)
+    elif data_kind == "funding_rate":
+        frame = pd.DataFrame({"date": pd.to_datetime(dates, utc=True), "funding_rate": [0.001, -0.001]})
+    else:
+        frame = pd.DataFrame({"date": pd.to_datetime(dates, utc=True), "open_interest_amount": [1.0, 2.0]})
+    frame.to_feather(path)
+
+    found = adapter.discover_feather_datasets(
+        "binance-local", tmp_path, exchange="binance", market_type=market_type
+    )
+
+    assert len(found) == 1
+    assert found[0]["status"] == "AVAILABLE"
+    assert found[0]["exchange"] == "binance"
+    assert found[0]["market_type"] == market_type
+    assert found[0]["asset"] == "BTC"
+    assert found[0]["exchange_symbol"] == expected_symbol
+    assert found[0]["data_kind"] == data_kind
+    assert found[0]["source_path"] == filename
+
+
+def test_discover_feather_surfaces_unsupported_filename_as_invalid(tmp_path):
+    adapter = _freqtrade_feather_module()
+    path = tmp_path / "unmapped-file.feather"
+    _ohlcv_frame(["2025-01-01T00:00:00Z"]).to_feather(path)
+
+    found = adapter.discover_feather_datasets(
+        "binance-local", tmp_path, exchange="binance", market_type="futures"
+    )
+
+    assert found[0]["status"] == "INVALID"
+    assert "filename" in " ".join(found[0]["issues"]).lower()
+
+
+def test_register_feather_file_hashes_source_and_builds_monthly_partitions(tmp_path):
+    adapter = _freqtrade_feather_module()
+    source_root = tmp_path / "futures"
+    source_root.mkdir()
+    source = source_root / "BTC_USDT_USDT-5m-futures.feather"
+    dates = [
+        "2025-01-31T23:55:00Z",
+        "2025-02-01T00:00:00Z",
+        "2025-02-01T00:05:00Z",
+    ]
+    _ohlcv_frame(dates).to_feather(source)
+    source_bytes = source.read_bytes()
+    catalog_root = tmp_path / "catalog"
+
+    result = adapter.register_feather_file(
+        catalog_root,
+        source_root_id="binance-futures",
+        source_root=source_root,
+        relative_path=Path(source.name),
+        exchange="binance",
+        market_type="futures",
+        asset="BTC",
+        exchange_symbol="BTC/USDT:USDT",
+        data_kind="ohlcv",
+        timeframe="5m",
+        source="freqtrade-local",
+    )
+
+    manifest = result["manifest"]
+    assert [item["row_count"] for item in manifest["partitions"]] == [1, 2]
+    assert manifest["partitions"][0]["start"] == "2025-01-01T00:00:00Z"
+    assert manifest["partitions"][0]["end"] == "2025-02-01T00:00:00Z"
+    assert manifest["partitions"][1]["start"] == "2025-02-01T00:00:00Z"
+    assert all(item["source_sha256"] == hashlib.sha256(source_bytes).hexdigest()
+               for item in manifest["partitions"])
+    assert source.read_bytes() == source_bytes
+
+
+def test_register_feather_file_is_idempotent_and_links_changed_source_revision(tmp_path):
+    adapter = _freqtrade_feather_module()
+    source_root = tmp_path / "futures"
+    source_root.mkdir()
+    source = source_root / "BTC_USDT_USDT-5m-futures.feather"
+    dates = ["2025-01-01T00:00:00Z", "2025-01-01T00:05:00Z"]
+    _ohlcv_frame(dates).to_feather(source)
+    catalog_root = tmp_path / "catalog"
+    arguments = {
+        "source_root_id": "binance-futures",
+        "source_root": source_root,
+        "relative_path": Path(source.name),
+        "exchange": "binance",
+        "market_type": "futures",
+        "asset": "BTC",
+        "exchange_symbol": "BTC/USDT:USDT",
+        "data_kind": "ohlcv",
+        "timeframe": "5m",
+        "source": "freqtrade-local",
+    }
+
+    first = adapter.register_feather_file(catalog_root, **arguments)
+    repeated = adapter.register_feather_file(catalog_root, **arguments)
+    assert repeated["manifest_sha256"] == first["manifest_sha256"]
+
+    revised = _ohlcv_frame(dates)
+    revised.loc[1, "close"] = 100.75
+    revised.to_feather(source)
+    second = adapter.register_feather_file(catalog_root, **arguments)
+
+    assert second["manifest_sha256"] != first["manifest_sha256"]
+    assert second["manifest"]["revision"]["previous_manifest_sha256"] == first["manifest_sha256"]
+
+
+def test_register_feather_file_rejects_source_root_escape_and_symlink(tmp_path):
+    adapter = _freqtrade_feather_module()
+    source_root = tmp_path / "source"
+    source_root.mkdir()
+    outside = tmp_path / "outside.feather"
+    _ohlcv_frame(["2025-01-01T00:00:00Z"]).to_feather(outside)
+    (source_root / "link.feather").symlink_to(outside)
+    identity = {
+        "catalog_root": tmp_path / "catalog",
+        "source_root_id": "local-source",
+        "source_root": source_root,
+        "exchange": "binance",
+        "market_type": "futures",
+        "asset": "BTC",
+        "exchange_symbol": "BTC/USDT:USDT",
+        "data_kind": "ohlcv",
+        "timeframe": "5m",
+        "source": "freqtrade-local",
+    }
+
+    with pytest.raises(ValueError, match="source path escapes configured root"):
+        adapter.register_feather_file(relative_path=Path("../outside.feather"), **identity)
+    with pytest.raises(ValueError, match="symlink"):
+        adapter.register_feather_file(relative_path=Path("link.feather"), **identity)
 
 
 def test_data_kind_registry_declares_required_contract_fields():
