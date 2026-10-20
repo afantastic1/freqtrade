@@ -30,14 +30,14 @@ jobs:
   service-security:
     name: Protocol, descriptive E2E and Worker isolation
     runs-on: ubuntu-latest
-    env:
-      UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/alpha-lab-service-venv
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v6
+      - name: Configure UV environment outside checkout
+        run: echo "UV_PROJECT_ENVIRONMENT=$RUNNER_TEMP/alpha-lab-service-venv" >> "$GITHUB_ENV"
       - name: Install locked service test environment
         run: uv sync --project alpha_lab_service --locked --group test
       - name: Build pinned untrusted Worker
