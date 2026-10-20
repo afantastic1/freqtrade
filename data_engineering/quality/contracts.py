@@ -74,9 +74,9 @@ def validate_observations(
         if not stamps.is_monotonic_increasing:
             issue("UNSORTED_TIMESTAMP", "timestamps must be increasing")
         step = _timeframe_seconds(timeframe)
-        if step is not None:
-            epoch_seconds = stamps.asi8 // 1_000_000_000
-            if any(int(value) % step for value in epoch_seconds):
+        if step is not None and contract["cadence_policy"] == "dense":
+            step_ns = step * 1_000_000_000
+            if any(int(value) % step_ns for value in stamps.as_unit("ns").asi8):
                 issue("TIMEFRAME_MISALIGNED", "timestamps do not align to the timeframe")
             if contract["cadence_policy"] == "dense":
                 expected = int((stamps.max().value - stamps.min().value) // (step * 1_000_000_000)) + 1

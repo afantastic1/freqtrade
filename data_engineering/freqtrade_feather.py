@@ -43,8 +43,11 @@ def _iso(value: Any) -> str:
 
 def _safe_root(source_root: Path) -> Path:
     root = Path(source_root)
-    if root.is_symlink():
-        raise ValueError("source root symlink forbidden")
+    current = Path(root.anchor) if root.is_absolute() else Path()
+    for part in root.parts[1:] if root.is_absolute() else root.parts:
+        current = current / part
+        if current.is_symlink():
+            raise ValueError("source root path traverses a symlink")
     if not root.is_dir():
         raise ValueError("source root must be an existing directory")
     return root.resolve(strict=True)
@@ -142,6 +145,14 @@ def _validate_columns(frame: pd.DataFrame, data_kind: str) -> None:
         raise ValueError("timestamp must have an explicit UTC timezone")
 
 
+def _canonicalize_frame(frame: pd.DataFrame, data_kind: str) -> pd.DataFrame:
+    """Map native Freqtrade mark candles to the canonical mark-price contract."""
+    if data_kind == "mark_price" and "mark_price" not in frame and "close" in frame:
+        frame = frame.copy()
+        frame["mark_price"] = frame["close"]
+    return frame
+
+
 def _frame_fingerprint(frame: pd.DataFrame) -> str:
     """Hash canonical, date-sorted column buffers without Python row iteration."""
     columns = sorted(frame.columns)
@@ -210,15 +221,18 @@ def _next_month(start: pd.Timestamp) -> pd.Timestamp:
     return pd.Timestamp(year=year, month=month, day=1, tz="UTC")
 
 
-def _read_and_summarize(path: Path, identity: dict[str, Any]) -> tuple[pd.DataFrame, list[dict[str, Any]], str]:
-    frame = pd.read_feather(path)
+def _read_and_summarize(path: Path, identity: dict[str, Any]):
+    frame = _canonicalize_frame(pd.read_feather(path), identity["data_kind"])
     _validate_columns(frame, identity["data_kind"])
     timestamp_field = DATA_KIND_CONTRACTS[identity["data_kind"]]["timestamp_field"]
+    from .quality.contracts import validate_observations
+
+    quality = validate_observations(
+        frame, data_kind=identity["data_kind"], timeframe=identity["timeframe"]
+    )
     frame = frame.copy()
     frame[timestamp_field] = pd.to_datetime(frame[timestamp_field], utc=True)
     frame = frame.sort_values(timestamp_field, kind="stable").reset_index(drop=True)
-    if frame[timestamp_field].duplicated().any():
-        raise ValueError("duplicate timestamps")
 
     timeframe = identity["timeframe"]
     cadence_policy = DATA_KIND_CONTRACTS[identity["data_kind"]]["cadence_policy"]
@@ -235,9 +249,12 @@ def _read_and_summarize(path: Path, identity: dict[str, Any]) -> tuple[pd.DataFr
             first = pd.Timestamp(part[timestamp_field].iloc[0])
             last = pd.Timestamp(part[timestamp_field].iloc[-1])
             missing = 0
-            if step is not None:
+            if step is not None and not quality["issues"]:
                 expected = int((last - first).total_seconds() // step) + 1
-                missing = expected - len(part)
+                missing = max(0, expected - len(part))
+            part_quality = validate_observations(
+                part, data_kind=identity["data_kind"], timeframe=identity["timeframe"]
+            )
             partitions.append(
                 {
                     "start": _iso(month),
@@ -249,12 +266,15 @@ def _read_and_summarize(path: Path, identity: dict[str, Any]) -> tuple[pd.DataFr
                     "row_count": int(len(part)),
                     "source_sha256": source_sha,
                     "fingerprint": _frame_fingerprint(part),
-                    "quality_status": "PARTIAL" if missing else "AVAILABLE",
-                    "summary": {"internal_missing_observations": missing},
+                    "quality_status": "INVALID" if part_quality["status"] == "INVALID" else (
+                        "PARTIAL" if missing or part_quality["status"] == "PARTIAL" else "AVAILABLE"
+                    ),
+                    "summary": {"internal_missing_observations": missing,
+                                "issues": part_quality["issues"]},
                 }
             )
         month = end
-    return frame, partitions, source_sha
+    return frame, partitions, source_sha, quality
 
 
 def discover_feather_datasets(
@@ -287,14 +307,17 @@ def discover_feather_datasets(
             identity = _parse_filename(path.name, exchange=exchange, market_type=market_type)
             source_path, normalized_relative = _safe_source_path(root, relative)
             identity.update({"source_root_id": source_root_id, "source_path": normalized_relative})
-            frame, partitions, source_sha = _read_and_summarize(source_path, identity)
+            frame, partitions, source_sha, quality = _read_and_summarize(source_path, identity)
             candidate.update(identity)
             candidate.update(
                 {
-                    "status": "PARTIAL"
-                    if any(part["quality_status"] == "PARTIAL" for part in partitions)
-                    else "AVAILABLE",
-                    "issues": [],
+                    "status": "INVALID" if quality["status"] == "INVALID" else (
+                        "PARTIAL" if quality["status"] == "PARTIAL" or any(
+                            part["quality_status"] == "PARTIAL" for part in partitions
+                        ) else "AVAILABLE"
+                    ),
+                    "issues": quality["issues"],
+                    "quality": quality,
                     "row_count": int(len(frame)),
                     "first_observation": _iso(frame["date"].iloc[0]),
                     "last_observation": _iso(frame["date"].iloc[-1]),
@@ -322,14 +345,22 @@ def register_feather_file(
     timeframe: str | None,
     source: str,
     source_reference: str = "",
+    event_cadence: str | None = None,
 ) -> dict[str, Any]:
     """Register one source-root-contained Feather file without rewriting it."""
     if not _SOURCE_ROOT_ID.fullmatch(source_root_id):
         raise ValueError("invalid source root ID")
     if not source:
         raise ValueError("source is required")
+    if event_cadence is not None:
+        _parse_timeframe(event_cadence)
+        if DATA_KIND_CONTRACTS[data_kind]["cadence_policy"] != "event":
+            raise ValueError("event_cadence is only valid for event datasets")
     path, normalized_relative = _safe_source_path(source_root, relative_path)
     parsed = _parse_filename(path.name, exchange=exchange, market_type=market_type)
+    if DATA_KIND_CONTRACTS[data_kind]["cadence_policy"] == "event":
+        # The filename carries a storage sampling label; event cadence is explicit metadata.
+        parsed["timeframe"] = timeframe
     expected = {
         "asset": asset,
         "exchange_symbol": exchange_symbol,
@@ -343,12 +374,13 @@ def register_feather_file(
         "source_root_id": source_root_id,
         "source_path": normalized_relative,
     }
-    frame, partitions, _ = _read_and_summarize(path, identity)
-    status = (
-        "PARTIAL"
-        if any(partition["quality_status"] == "PARTIAL" for partition in partitions)
-        else "AVAILABLE"
+    frame, partitions, _, quality = _read_and_summarize(path, identity)
+    status = "INVALID" if quality["status"] == "INVALID" else (
+        "PARTIAL" if quality["status"] == "PARTIAL" or any(
+            partition["quality_status"] == "PARTIAL" for partition in partitions
+        ) else "AVAILABLE"
     )
+    symbol_hash = hashlib.sha256(exchange_symbol.encode("utf-8")).hexdigest()[:12]
     dataset_id = "-".join(
         re.sub(r"[^a-zA-Z0-9_-]+", "-", str(value)).strip("-").lower()
         for value in (
@@ -357,6 +389,7 @@ def register_feather_file(
             asset,
             data_kind,
             timeframe or "event",
+            symbol_hash,
         )
     )
     manifest = {
@@ -368,12 +401,13 @@ def register_feather_file(
         "exchange_symbol": exchange_symbol,
         "data_kind": data_kind,
         "timeframe": timeframe,
+        "event_cadence": event_cadence,
         "source": source,
         "source_reference": source_reference,
         "registered_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "quality": {
             "status": status,
-            "issues": [],
+            "issues": quality["issues"],
             "summary": {
                 "row_count": int(len(frame)),
                 "first_observation": _iso(frame["date"].iloc[0]),

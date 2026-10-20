@@ -2,8 +2,8 @@
 
 Date: 2026-10-20  
 Base: `58aec42937a015b33cb987ef4f7138af44d6f3a4`  
-Implementation HEAD: `a97654ee735ed1f653544737549f47d24c2f9f69`  
-Worktree: `/home/von/.codex/worktrees/a03f/freqtrade`
+Implementation HEAD: `14bc59ef27`  
+Worktree: `/tmp/freqtrade-pr02-fix`
 
 ## Result
 
@@ -18,7 +18,8 @@ Observed range: `[2022-01-01T00:00:00Z, 2026-10-15T15:10:00Z]`
 Monthly partitions: `58`  
 Discovery: `AVAILABLE`  
 Source SHA-256: `f39767aefb7f9e2b6651912a1e84b85fef3ac6ada8a6026eeb153d93914d589c`  
-Manifest fingerprint: `b5bfd7dccd04b337035332cc6c3e94f4a3088c2cd9a13da789f2958bb6783ddb`  
+Dataset ID: `binance-futures-btc-ohlcv-5m-6c7cb41c78f4`  
+Manifest fingerprint: `f7478bbe08a2a6bb8da2af12f63aa84572b0e2f825ae50b86cb8ec5923614f12`  
 Repeated registration returned the same fingerprint.
 
 | Requested interval `[start, end)` | Observed | Missing | Status |
@@ -30,17 +31,19 @@ The second interval ends one 5-minute timeframe after the latest observed candle
 
 ## Synthetic and compatibility evidence
 
-The contract and CLI fixtures cover invalid and naive timestamps, non-UTC offsets, timeframe alignment, duplicates, missing candles, OHLCV bounds and values, sparse Funding/OI behavior, source hashes, partition fingerprints, exclusive ends, and CLI routing. Coverage tests include full, leading, trailing, internal, unknown-dataset, and bounded gap-list cases.
+The contract and CLI fixtures cover invalid and naive timestamps, non-UTC offsets, subsecond timeframe alignment, duplicates, missing candles, OHLCV bounds and values, sparse Funding/OI behavior, source hashes, partition fingerprints, exclusive ends, and CLI routing. Coverage tests include full, leading, trailing, internal, unknown-dataset, bounded gap-list, and out-of-manifest-partition cases. Additional regressions cover symlinked source-root ancestors, malformed manifests, native Freqtrade mark candles, distinct settlement symbols, invalid quality at discovery/registration, and optional declared event cadence.
 
-The legacy v1/v2 tests and standalone package checks ran with the v3 suite. The `data_engineering` wheel contains both quality contract modules and `dataset-manifest-v3.schema.json`; installing the wheel into `/tmp` successfully imported `data_engineering.quality.contracts` and loaded the packaged schema.
+An independent final review identified correctness and safety gaps in the initial implementation. They were fixed before acceptance: coverage now uses the source frames and partition slices validated in the same operation; discovery and registration preserve quality issues from original row order; source roots reject symlinked ancestors; timestamp alignment uses nanoseconds and applies only to dense data; malformed manifests return structured `INVALID` results scoped to the requested dataset; native mark candles map their close to canonical mark price in memory; generated IDs include a deterministic exchange-symbol hash; `pyarrow` is declared at runtime; and event cadence can be declared separately from the filename sampling label. Source files remain unchanged.
+
+The legacy v1/v2 tests and standalone package checks ran with the v3 suite. The `data_engineering` wheel contains both quality contract modules and `dataset-manifest-v3.schema.json`; its metadata declares `pyarrow>=14`, and installing the wheel into `/tmp` successfully imported `data_engineering.quality.contracts` and loaded the packaged schema.
 
 ## Commands and results
 
 Repository regression and catalog tests:
 
 ```text
-env PYTHONPATH=/tmp/alpha-catalog-v3-test-deps /home/von/workspace/venv/bin/python -m pytest -o addopts='' -o cache_dir=/tmp/pytest-alpha-catalog-v3-final -q alpha_lab_contracts/tests/ alpha_lab/tests/ alpha_lab/calibration/ tests/test_data_engineering.py tests/test_data_engineering_packaging.py tests/test_data_engineering_catalog_v3.py tests/test_data_engineering_catalog_v3_cli.py tests/test_cross_sectional_fundamental_runner.py tests/test_fundamental_asof.py tests/test_fundamental_feature_bridge.py tests/test_fundamental_registries.py tests/test_fundamentals.py tests/test_pit_audit.py tests/test_pit_evidence.py data_engineering/scripts/test_fundamental_coverage_audit.py
-502 passed, 76 warnings in 19.48s
+env PYTHONPATH=/tmp/alpha-catalog-v3-test-deps /home/von/workspace/venv/bin/python -m pytest -o addopts='' -o cache_dir=/tmp/pytest-alpha-catalog-v3-review-fixes -q alpha_lab_contracts/tests/ alpha_lab/tests/ alpha_lab/calibration/ tests/test_data_engineering.py tests/test_data_engineering_packaging.py tests/test_data_engineering_catalog_v3.py tests/test_data_engineering_catalog_v3_cli.py tests/test_cross_sectional_fundamental_runner.py tests/test_fundamental_asof.py tests/test_fundamental_feature_bridge.py tests/test_fundamental_registries.py tests/test_fundamentals.py tests/test_pit_audit.py tests/test_pit_evidence.py data_engineering/scripts/test_fundamental_coverage_audit.py
+514 passed, 76 warnings in 18.59s
 ```
 
 The warnings are existing pytest configuration warnings and pandas FutureWarnings in Alpha Lab label/statistics code.
@@ -59,7 +62,7 @@ git diff --check
 exit 0
 
 /home/von/workspace/venv/bin/python -m pip wheel --no-deps --no-build-isolation --wheel-dir /tmp/alpha-catalog-v3-wheel ./data_engineering
-Successfully built alpha-lab-data-engineering-0.1.0
+Successfully built alpha-lab-data-engineering-0.1.0; wheel metadata includes `Requires-Dist: pyarrow>=14`.
 ```
 
 Wheel install smoke:

@@ -61,9 +61,11 @@ def get_coverage(
     start_utc, end_utc = _utc(start, "start"), _utc(end, "end")
     if start_utc >= end_utc:
         raise ValueError("start must be before end")
-    from .catalog_v3 import validate_dataset
+    from .catalog_v3 import _validate_dataset_snapshot
 
-    verified = validate_dataset(root, dataset_id, source_roots=dict(source_roots))
+    verified, verified_partitions, record = _validate_dataset_snapshot(
+        root, dataset_id, source_roots=dict(source_roots)
+    )
     base: dict[str, Any] = {
         "dataset_id": dataset_id,
         "requested_interval": {"start": _iso(start_utc), "end": _iso(end_utc)},
@@ -80,7 +82,6 @@ def get_coverage(
     if verified["status"] == "INVALID":
         return {**base, "status": "INVALID", "issues": verified["issues"]}
 
-    record = _latest_record(root, dataset_id)
     assert record is not None
     manifest = record["manifest"]
     base["partition_versions"] = [
@@ -91,22 +92,13 @@ def get_coverage(
         if pd.Timestamp(part["end"]) > start_utc and pd.Timestamp(part["start"]) < end_utc
     ]
 
-    from .freqtrade_feather import _safe_source_path
-
     source_frames = []
-    visited: set[tuple[str, str]] = set()
-    for part in manifest["partitions"]:
-        source_key = (part["source_root_id"], part["source_path"])
-        if source_key in visited:
-            continue
-        visited.add(source_key)
-        configured_root = source_roots.get(source_key[0])
-        if configured_root is None:
-            continue
-        source_path, _ = _safe_source_path(configured_root, Path(source_key[1]))
-        frame = pd.read_feather(source_path)
+    for part, frame in verified_partitions:
+        part_start, part_end = pd.Timestamp(part["start"]), pd.Timestamp(part["end"])
         stamps = pd.to_datetime(frame["date"], utc=True)
-        selected = frame.loc[(stamps >= start_utc) & (stamps < end_utc)].copy()
+        selected = frame.loc[
+            (stamps >= max(start_utc, part_start)) & (stamps < min(end_utc, part_end))
+        ].copy()
         if not selected.empty:
             selected["date"] = pd.to_datetime(selected["date"], utc=True)
             source_frames.append(selected)
@@ -126,13 +118,15 @@ def get_coverage(
         }
 
     contract = DATA_KIND_CONTRACTS[manifest["data_kind"]]
-    if contract["cadence_policy"] != "dense" or manifest["timeframe"] is None:
+    event_cadence = manifest.get("event_cadence")
+    cadence = manifest["timeframe"] if contract["cadence_policy"] == "dense" else event_cadence
+    if cadence is None:
         base["status"] = "PARTIAL"
         base["coverage_basis"] = "observed_only"
         base["observed_intervals"] = [{"start": _iso(stamp), "end": _iso(stamp)} for stamp in stamps]
         return base
 
-    step_seconds = _step_seconds(manifest["timeframe"])
+    step_seconds = _step_seconds(cadence)
     assert step_seconds is not None
     step = pd.Timedelta(seconds=step_seconds)
     epoch = pd.Timestamp("1970-01-01T00:00:00Z")

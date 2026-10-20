@@ -33,6 +33,12 @@
         {"type": "null"}
       ]
     },
+    "event_cadence": {
+      "anyOf": [
+        {"type": "string", "pattern": "^[1-9][0-9]*(s|m|h|d|w)$"},
+        {"type": "null"}
+      ]
+    },
     "source": {"type": "string", "minLength": 1},
     "source_reference": {"type": "string"},
     "registered_at": {"type": "string", "format": "date-time"},

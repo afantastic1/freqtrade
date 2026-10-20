@@ -90,6 +90,7 @@ def main(argv=None) -> int:
     v3_register.add_argument("--data-kind", required=True,
                               choices=("ohlcv", "funding_rate", "open_interest", "mark_price"))
     v3_register.add_argument("--timeframe")
+    v3_register.add_argument("--event-cadence")
     v3_register.add_argument("--source", required=True)
     v3_register.add_argument("--source-reference", default="")
 
@@ -152,7 +153,8 @@ def main(argv=None) -> int:
                 relative_path=args.relative_path, exchange=args.exchange,
                 market_type=args.market_type, asset=args.asset,
                 exchange_symbol=args.exchange_symbol, data_kind=args.data_kind,
-                timeframe=args.timeframe, source=args.source, source_reference=args.source_reference,
+                timeframe=args.timeframe, event_cadence=args.event_cadence,
+                source=args.source, source_reference=args.source_reference,
             )
         elif args.v3_command == "validate":
             response = validate_dataset(

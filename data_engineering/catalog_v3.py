@@ -84,6 +84,14 @@ def validate_v3_manifest(document: dict[str, Any]) -> None:
         _validate_source_path(partition["source_path"], partition_index=index)
         previous_end = end
 
+    event_cadence = document.get("event_cadence")
+    if event_cadence is not None and document["data_kind"] not in {"funding_rate", "open_interest"}:
+        raise ValueError("event_cadence is only valid for event datasets")
+    if event_cadence is not None:
+        from .freqtrade_feather import _parse_timeframe
+
+        _parse_timeframe(event_cadence)
+
     registered_at = _parse_utc(document["registered_at"], name="registered_at")
     del registered_at
 
@@ -247,16 +255,18 @@ def list_datasets(
     return records
 
 
-def validate_dataset(
+def _validate_dataset_snapshot(
     root: Path, dataset_id: str, *, source_roots: Mapping[str, Path]
-) -> dict[str, Any]:
-    """Verify the latest registered version against its configured source bytes."""
-    records = [
-        record for record in list_datasets(root)
-        if record["manifest"]["dataset_id"] == dataset_id
-    ]
+) -> tuple[dict[str, Any], list[tuple[dict[str, Any], pd.DataFrame]], dict[str, Any] | None]:
+    """Validate one dataset and return only the verified partition slices."""
+    try:
+        paths = _version_files(Path(root), dataset_id)
+        records = [_record(path, _read_version(path, dataset_id)) for path in paths]
+    except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+        return ({"dataset_id": dataset_id, "manifest": None, "status": "INVALID",
+                 "issues": [{"code": "MANIFEST_INVALID", "message": str(exc)}]}, [], None)
     if not records:
-        return {"dataset_id": dataset_id, "manifest": None, "status": "MISSING", "issues": []}
+        return ({"dataset_id": dataset_id, "manifest": None, "status": "MISSING", "issues": []}, [], None)
     referenced = {
         record["manifest"]["revision"]["previous_manifest_sha256"]
         for record in records
@@ -264,8 +274,8 @@ def validate_dataset(
     }
     leaves = [record for record in records if record["manifest_sha256"] not in referenced]
     if len(leaves) != 1:
-        return {"dataset_id": dataset_id, "manifest": None, "status": "INVALID",
-                "issues": [{"code": "INVALID_LINEAGE", "message": "catalog has no unique latest version"}]}
+        return ({"dataset_id": dataset_id, "manifest": None, "status": "INVALID",
+                 "issues": [{"code": "INVALID_LINEAGE", "message": "catalog has no unique latest version"}]}, [], None)
     latest = leaves[0]
     manifest = latest["manifest"]
     issues: list[dict[str, str]] = []
@@ -273,10 +283,13 @@ def validate_dataset(
     def issue(code: str, message: str) -> None:
         issues.append({"code": code, "message": message})
 
-    from .freqtrade_feather import _frame_fingerprint, _safe_source_path, _source_digest
+    from .freqtrade_feather import (
+        _canonicalize_frame, _frame_fingerprint, _safe_source_path, _source_digest,
+    )
     from .quality.contracts import validate_observations
 
-    frames = []
+    verified_partitions: list[tuple[dict[str, Any], pd.DataFrame]] = []
+    source_cache: dict[tuple[str, str], tuple[Path, pd.DataFrame, str]] = {}
     for index, partition in enumerate(manifest["partitions"]):
         root_id = partition["source_root_id"]
         configured_root = source_roots.get(root_id)
@@ -284,11 +297,16 @@ def validate_dataset(
             issue("SOURCE_ROOT_MISSING", f"no source root configured for {root_id}")
             continue
         try:
-            source_path, _ = _safe_source_path(configured_root, Path(partition["source_path"]))
-            if _source_digest(source_path) != partition["source_sha256"]:
+            key = (root_id, partition["source_path"])
+            if key not in source_cache:
+                source_path, _ = _safe_source_path(configured_root, Path(partition["source_path"]))
+                source_frame = pd.read_feather(source_path)
+                source_frame = _canonicalize_frame(source_frame, manifest["data_kind"])
+                source_cache[key] = (source_path, source_frame, _source_digest(source_path))
+            source_path, frame, source_hash = source_cache[key]
+            if source_hash != partition["source_sha256"]:
                 issue("SOURCE_HASH_MISMATCH", f"partition {index} source bytes changed")
                 continue
-            frame = pd.read_feather(source_path)
             dates = pd.to_datetime(frame["date"], utc=True)
             start = pd.Timestamp(partition["start"])
             end = pd.Timestamp(partition["end"])
@@ -298,12 +316,12 @@ def validate_dataset(
             if _frame_fingerprint(part) != partition["fingerprint"]:
                 issue("PARTITION_FINGERPRINT_MISMATCH", f"partition {index} observations changed")
             if not part.empty:
-                frames.append(part)
+                verified_partitions.append((partition, part))
         except (OSError, ValueError, KeyError, TypeError) as exc:
             issue("SOURCE_INVALID", f"partition {index}: {exc}")
 
-    if frames:
-        frame = pd.concat(frames, ignore_index=True)
+    if verified_partitions:
+        frame = pd.concat([part for _, part in verified_partitions], ignore_index=True)
         quality = validate_observations(
             frame, data_kind=manifest["data_kind"], timeframe=manifest["timeframe"]
         )
@@ -313,8 +331,17 @@ def validate_dataset(
         quality = {"row_count": 0, "observed_interval": None, "cadence": {},
                    "status": "MISSING", "issues": []}
         status = "INVALID" if issues else "MISSING"
-    return {"dataset_id": dataset_id, "manifest": manifest, "status": status,
-            "quality": quality, "issues": issues}
+    result = {"dataset_id": dataset_id, "manifest": manifest, "status": status,
+              "quality": quality, "issues": issues}
+    return result, verified_partitions, latest
+
+
+def validate_dataset(
+    root: Path, dataset_id: str, *, source_roots: Mapping[str, Path]
+) -> dict[str, Any]:
+    """Verify the latest registered version against its configured source bytes."""
+    result, _, _ = _validate_dataset_snapshot(root, dataset_id, source_roots=source_roots)
+    return result
 
 
 def get_coverage(

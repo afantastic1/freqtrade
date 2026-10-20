@@ -76,6 +76,26 @@ def test_catalog_v3_list_validate_and_coverage_emit_json(tmp_path, capsys):
     assert covered["status"] == "AVAILABLE"
 
 
+def test_catalog_v3_register_accepts_explicit_event_cadence(tmp_path, capsys):
+    source_root = tmp_path / "events"
+    source_root.mkdir()
+    source = source_root / "BTC_USDT_USDT-1h-funding_rate.feather"
+    pd.DataFrame({
+        "date": pd.to_datetime(["2025-01-01T00:00:00Z", "2025-01-01T01:00:00Z"], utc=True),
+        "funding_rate": [0.001, 0.002],
+    }).to_feather(source)
+    assert main([
+        "--root", str(tmp_path / "catalog"), "catalog-v3", "register",
+        "--source-root-id", "events", "--source-root", str(source_root),
+        "--relative-path", source.name, "--exchange", "binance", "--market-type", "futures",
+        "--asset", "BTC", "--exchange-symbol", "BTC/USDT:USDT",
+        "--data-kind", "funding_rate", "--event-cadence", "1h",
+        "--source", "freqtrade-local",
+    ]) == 0
+    registered = json.loads(capsys.readouterr().out)
+    assert registered["manifest"]["event_cadence"] == "1h"
+
+
 def test_legacy_inventory_cli_remains_available(tmp_path, capsys):
     assert main(["inventory", "--datadir", str(tmp_path)]) == 0
     result = json.loads(capsys.readouterr().out)
