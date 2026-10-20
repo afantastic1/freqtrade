@@ -1,0 +1,55 @@
+{
+  "schema": "alpha-lab-agent-isolation-attestation-v1",
+  "review_date": "2026-10-20",
+  "status": "BLOCKED",
+  "runtime": "ephemeral Docker negative-probe worker; actual OpenCode/Codex Agent session not integrated",
+  "worker_profile": {
+    "network": "none",
+    "root_filesystem": "read-only",
+    "uid_gid": "1000:1000",
+    "capabilities": "all dropped",
+    "no_new_privileges": true,
+    "pids_limit": 32,
+    "mounts": {
+      "alpha_lab_core": "read-only",
+      "raw_market_data": "not mounted",
+      "evidence_store": "not mounted",
+      "decision_store": "not mounted",
+      "agent_workspace": "read-write under /tmp only"
+    }
+  },
+  "negative_tests": {
+    "core_write_denied": true,
+    "market_read_denied": true,
+    "evidence_read_denied": true,
+    "decision_read_denied": true,
+    "decision_write_denied": true,
+    "heldout_read_denied": true,
+    "bounded_panel_read_only_verified": true,
+    "agent_workspace_write_allowed": true,
+    "shell_spawn_denied": false,
+    "symlink_escape_denied": false,
+    "network_denied": true,
+    "actual_agent_runtime_enforced": false
+  },
+  "probe_output": [
+    "CORE_WRITE_DENIED",
+    "PROTECTED_PATH_ABSENT:/protected/market",
+    "PROTECTED_PATH_ABSENT:/protected/evidence.sqlite",
+    "PROTECTED_PATH_ABSENT:/protected/decisions",
+    "AGENT_WORKSPACE_WRITE_ALLOWED",
+    "NETWORK_DENIED",
+    "BOUNDED_PANEL_ONLY_READABLE"
+  ],
+  "open_code_runtime": {
+    "binary_executed_inside_container": true,
+    "debug_agents_output": [],
+    "configured_alpha_researcher_loaded": false,
+    "verdict": "BLOCKED"
+  },
+  "bwrap_network_namespace": {
+    "status": "FAILED",
+    "reason": "Failed to create NETLINK_ROUTE socket: Operation not permitted"
+  },
+  "limitation": "The Docker probe validates a worker profile only. It does not prove the real OpenCode or Codex agent process is forced to execute inside that profile."
+}

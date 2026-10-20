@@ -1,0 +1,93 @@
+{
+  "schema": "alpha-lab-inference-qualification-v1",
+  "review_date": "2026-10-20",
+  "head": "5d39cde83e36d25d77f9c8a2fb05976ec126d5b3",
+  "calibration": {
+    "historical_artifact": "docs/alpha_lab/cs_inference_calibration_results.json",
+    "replication_artifact": "docs/alpha_lab/cs_inference_mc_seed_20261020.json",
+    "replication_sha256": "fe7a92da65e09dfd8b846d52a736b0a3aa1c022c5c9cec92200c6925c16f36be",
+    "scenario_count": 35,
+    "repetitions_per_scenario": 5000,
+    "bootstrap_replicates": 399,
+    "seed": 20261020,
+    "criteria": {
+      "type_i_upper_familywise": 0.06,
+      "coverage_lower": 0.92,
+      "coverage_upper": 0.98,
+      "all_scenarios_required": true
+    },
+    "qualification_result": "NO_INFERENCE_CANDIDATE_PASSED"
+  },
+  "methods": {
+    "cs-time-block-centered-v1": {
+      "status": "RESTRICTED",
+      "registry_status": "BLOCKED",
+      "allowed_scope": "diagnostic point summaries and bootstrap display only; no inferential p-value or interval claims",
+      "tested_candidates": {
+        "mbb_lag_4": {"max_type_i": 0.2898, "familywise_upper": 0.3142, "min_null_coverage": 0.6844, "status": "BLOCKED"},
+        "mbb_lag_12": {"max_type_i": 0.1906, "familywise_upper": 0.2121, "min_null_coverage": 0.7512, "status": "BLOCKED"},
+        "mbb_lag_32": {"max_type_i": 0.2388, "familywise_upper": 0.2619, "min_null_coverage": 0.6304, "status": "BLOCKED"}
+      }
+    },
+    "hac-bartlett-calibration-v1": {
+      "status": "RESTRICTED",
+      "registry_status": "BLOCKED",
+      "allowed_scope": "diagnostic standard errors only; no inferential p-value or interval claims",
+      "tested_candidates": {
+        "hac_lag_4": {"max_type_i": 0.2594, "familywise_upper": 0.2831, "min_null_coverage": 0.7406, "status": "BLOCKED"},
+        "hac_lag_12": {"max_type_i": 0.1998, "familywise_upper": 0.2216, "min_null_coverage": 0.8002, "status": "BLOCKED"},
+        "hac_lag_32": {"max_type_i": 0.2526, "familywise_upper": 0.2761, "min_null_coverage": 0.7474, "status": "BLOCKED"}
+      }
+    },
+    "estimated_phi": {
+      "status": "BLOCKED",
+      "registry_status": "BLOCKED",
+      "allowed_scope": "none",
+      "reason": "historical 16.20% Type-I claim lacks implementation, scenario design, seed, and raw artifact"
+    },
+    "iid_t": {
+      "status": "BLOCKED",
+      "registry_status": "NOT_REGISTERED",
+      "allowed_scope": "reference only",
+      "max_type_i": 0.5522,
+      "familywise_upper": 0.5781,
+      "min_null_coverage": 0.4478
+    },
+    "scipy-pearson-point-v1": {
+      "status": "QUALIFIED",
+      "registry_status": "PASS",
+      "role": "descriptive",
+      "allowed_scope": "point estimate only; no p-value or confidence claim"
+    },
+    "scipy-spearman-point-v1": {
+      "status": "QUALIFIED",
+      "registry_status": "PASS",
+      "role": "descriptive",
+      "allowed_scope": "point estimate only; no p-value or confidence claim"
+    },
+    "holm-bonferroni-v1": {
+      "status": "RESTRICTED",
+      "registry_status": "PASS",
+      "role": "adjustment_only",
+      "allowed_scope": "adjust valid marginal p-values over a declared family only"
+    },
+    "scipy-bh-v1": {
+      "status": "RESTRICTED",
+      "registry_status": "PASS",
+      "role": "adjustment_only",
+      "allowed_scope": "adjust valid marginal p-values over a declared family only"
+    },
+    "scipy-by-v1": {
+      "status": "RESTRICTED",
+      "registry_status": "PASS",
+      "role": "adjustment_only",
+      "allowed_scope": "adjust valid marginal p-values over a declared family only"
+    },
+    "paired-mbb-centered-null-v3": {"status": "RESTRICTED", "registry_status": "LEGACY", "allowed_scope": "historical reproduction only"},
+    "prereg-a-v3": {"status": "RESTRICTED", "registry_status": "LEGACY", "allowed_scope": "historical reproduction only"},
+    "prereg-b-v2-centered-null": {"status": "RESTRICTED", "registry_status": "LEGACY", "allowed_scope": "historical reproduction only"},
+    "ts-rankic-mbb-horizon-v1": {"status": "RESTRICTED", "registry_status": "LEGACY", "allowed_scope": "historical reproduction only"}
+  },
+  "selected_inference_method": "cs-time-block-centered-v1",
+  "selected_method_status": "BLOCKED"
+}

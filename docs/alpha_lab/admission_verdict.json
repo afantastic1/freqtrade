@@ -1,0 +1,57 @@
+{
+  "admitted": false,
+  "gates": {
+    "agent_isolation": {
+      "required_tests": {
+        "actual_agent_runtime_enforced": false,
+        "agent_workspace_write_allowed": true,
+        "bounded_panel_read_only_verified": true,
+        "core_write_denied": true,
+        "decision_read_denied": true,
+        "decision_write_denied": true,
+        "evidence_read_denied": true,
+        "heldout_read_denied": true,
+        "market_read_denied": true,
+        "network_denied": true,
+        "shell_spawn_denied": false,
+        "symlink_escape_denied": false
+      },
+      "runtime": "ephemeral Docker negative-probe worker; actual OpenCode/Codex Agent session not integrated",
+      "status": "BLOCKED"
+    },
+    "core_manifest": {
+      "errors": [],
+      "status": "PASS"
+    },
+    "data_panel": {
+      "errors": [],
+      "panel_path": "user_data/research/alpha_lab/panels/usdm_1h_2022_2024.csv",
+      "panel_sha256": "20991661435cd88cf6c2ccf3d128693169bce5f30e3f70f4412b2aa3e1fc88f8",
+      "status": "PASS"
+    },
+    "evidence_decision_store": {
+      "append_only_triggers_verified": false,
+      "foreign_key_errors": 0,
+      "integrity_check": "ok",
+      "required_tables_present": [],
+      "sha256": "f92010447c34d24a293d71693c75950aef45cd4f955310c648929a6d89ad6cf9",
+      "status": "BLOCKED"
+    },
+    "inference_method": {
+      "method_id": "cs-time-block-centered-v1",
+      "qualification_status": "RESTRICTED",
+      "registry_status": "BLOCKED",
+      "status": "BLOCKED"
+    }
+  },
+  "head": "5d39cde83e36d25d77f9c8a2fb05976ec126d5b3",
+  "input_sha256": {
+    "agent_isolation_attestation": "427378cc509bbad2c7457456da667bbd93b7aed2f0c9c70c33b109c1f6660113",
+    "inference_qualification": "5c7a8e26fa2938b8a46009ad85fad3869bc209a3fdfcb3a9daa43fbf6403488b",
+    "panel_manifest": "e136dfb69d350875eb8620c7439d747620a3a270c54be1e14d746916af8bc4fc"
+  },
+  "schema": "alpha-lab-admission-verdict-v1",
+  "scope": "cross-sectional exploratory research, five-asset 1h 2022-2024",
+  "status": "RC_BLOCKED",
+  "stop_rule": "Any required gate other than PASS keeps status RC_BLOCKED."
+}
