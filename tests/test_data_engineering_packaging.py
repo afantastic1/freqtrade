@@ -23,6 +23,9 @@ def test_packaged_catalog_schema_accepts_legacy_and_current_manifests():
     schema_dir = files("data_engineering").joinpath("schemas")
     legacy_schema = json.loads(schema_dir.joinpath("catalog-manifest-v1.schema.json").read_text())
     current_schema = json.loads(schema_dir.joinpath("catalog-manifest-v2.schema.json").read_text())
+    v3_schema_resource = schema_dir.joinpath("dataset-manifest-v3.schema.json")
+    assert v3_schema_resource.is_file()
+    v3_schema = json.loads(v3_schema_resource.read_text())
     base = {
         "dataset_id": "unit-test", "kind": "fundamental", "source": "unit-source",
         "source_reference": "", "access_class": "EXPLORATORY_2022_2024",
@@ -38,6 +41,7 @@ def test_packaged_catalog_schema_accepts_legacy_and_current_manifests():
 
     Draft202012Validator(legacy_schema).validate(legacy)
     Draft202012Validator(current_schema).validate(current)
+    assert v3_schema["properties"]["schema_version"]["const"] == "data-catalog-v3"
 
 
 def test_packaged_pit_sidecar_schema_is_available_and_versioned():

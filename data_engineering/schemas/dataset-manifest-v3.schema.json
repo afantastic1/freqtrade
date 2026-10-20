@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://freqtrade.local/schemas/dataset-manifest-v3.schema.json",
+  "title": "Data Catalog Dataset Manifest v3",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "dataset_id",
+    "exchange",
+    "market_type",
+    "asset",
+    "exchange_symbol",
+    "data_kind",
+    "timeframe",
+    "source",
+    "source_reference",
+    "registered_at",
+    "quality",
+    "partitions",
+    "revision"
+  ],
+  "properties": {
+    "schema_version": {"const": "data-catalog-v3"},
+    "dataset_id": {"type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,119}$"},
+    "exchange": {"type": "string", "minLength": 1},
+    "market_type": {"enum": ["spot", "futures"]},
+    "asset": {"type": "string", "minLength": 1},
+    "exchange_symbol": {"type": "string", "minLength": 1},
+    "data_kind": {"enum": ["ohlcv", "funding_rate", "open_interest", "mark_price"]},
+    "timeframe": {
+      "anyOf": [
+        {"type": "string", "pattern": "^[1-9][0-9]*(s|m|h|d|w)$"},
+        {"type": "null"}
+      ]
+    },
+    "source": {"type": "string", "minLength": 1},
+    "source_reference": {"type": "string"},
+    "registered_at": {"type": "string", "format": "date-time"},
+    "quality": {"$ref": "#/$defs/quality"},
+    "partitions": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/partition"}
+    },
+    "revision": {"$ref": "#/$defs/revision"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"data_kind": {"enum": ["ohlcv", "mark_price"]}}},
+      "then": {"properties": {"timeframe": {"type": "string"}}}
+    }
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "quality": {
+      "type": "object",
+      "required": ["status", "issues"],
+      "properties": {
+        "status": {"enum": ["AVAILABLE", "PARTIAL", "MISSING", "INVALID"]},
+        "issues": {"type": "array", "items": {"type": "object"}},
+        "summary": {"type": "object"}
+      },
+      "additionalProperties": false
+    },
+    "partition": {
+      "type": "object",
+      "required": [
+        "start",
+        "end",
+        "source_root_id",
+        "source_path",
+        "first_observation",
+        "last_observation",
+        "row_count",
+        "source_sha256",
+        "fingerprint",
+        "quality_status"
+      ],
+      "properties": {
+        "start": {"type": "string", "format": "date-time"},
+        "end": {"type": "string", "format": "date-time"},
+        "source_root_id": {"type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$"},
+        "source_path": {"type": "string", "minLength": 1},
+        "first_observation": {"type": "string", "format": "date-time"},
+        "last_observation": {"type": "string", "format": "date-time"},
+        "row_count": {"type": "integer", "minimum": 1},
+        "source_sha256": {"$ref": "#/$defs/sha256"},
+        "fingerprint": {"$ref": "#/$defs/sha256"},
+        "quality_status": {"enum": ["AVAILABLE", "PARTIAL", "MISSING", "INVALID"]},
+        "summary": {"type": "object"}
+      },
+      "additionalProperties": false
+    },
+    "revision": {
+      "type": "object",
+      "required": ["previous_manifest_sha256", "reason"],
+      "properties": {
+        "previous_manifest_sha256": {
+          "anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]
+        },
+        "reason": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    }
+  }
+}
