@@ -1,7 +1,8 @@
 # ResearchRequest v2 and CampaignPolicy v1 acceptance
 
-**Implementation HEAD before this report update:** `74a1c23a46c79037b7355060cfb9c74efce0c9f6`  
-**Base:** `33438bc944`  
+**Implementation HEAD before this report update:** `74a1c23a46c79037b7355060cfb9c74efce0c9f6`
+
+**Base:** `33438bc944`
 **Scope:** PR-01 contract, registry, governance, and CI changes only.
 
 ## Verification
