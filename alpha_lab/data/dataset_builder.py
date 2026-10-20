@@ -38,6 +38,8 @@ class DatasetBuilderV2:
         policy = self.policy_registry.get(request.campaign_id, request.policy_version, request.campaign_policy_sha256)
         request = ResearchRequestV2.from_dict(json.loads(request.canonical_json()), self.policy_registry)
         plan = build_temporal_plan(request, policy)
+        if plan.label_extension_truncated and options.missing_data_policy == "reject":
+            raise ValueError("label extension exceeds selected split end")
         ohlcv = [item for item in request.data_types if item in {"futures_ohlcv", "spot_ohlcv"}]
         primary = options.primary_data_type
         if primary is None:
@@ -139,6 +141,9 @@ class DatasetBuilderV2:
         }
         issues = tuple({"code": "MISSING_PRIMARY_SLOTS", "intervals": [stamp.isoformat() for stamp in missing_slots]}
                        for _ in [0] if len(missing_slots))
+        if plan.label_extension_truncated:
+            issues += ({"code": "LABEL_EXTENSION_TRUNCATED_AT_SPLIT",
+                        "missing_labels": int(labels.label_value.isna().sum())},)
         report = DatasetBuildReportV1(sources=source_records, issues=tuple(missing_source_issues) + issues, quality={"worker_rows": len(worker.frame), "label_rows": len(evaluator.frame), "missing_primary_slots": len(missing_slots)})
         result = DatasetBuildResultV2(worker, evaluator, report, manifest)
         artifact = publish_dataset(result, self.output_root)
@@ -253,7 +258,10 @@ class DatasetBuilderV2:
                      + tuple({"code": "MISSING_PRIMARY_SLOTS", "symbol": symbol, "intervals": intervals}
                              for symbol, intervals in missing_slots_by_symbol.items())
                      + (({"code": "MISSING_MEMBERSHIP_HISTORY", "symbols": missing_membership_symbols},)
-                        if missing_membership_symbols else ()))
+                        if missing_membership_symbols else ())
+                     + (({"code": "LABEL_EXTENSION_TRUNCATED_AT_SPLIT",
+                           "missing_labels": int(labels.label_value.isna().sum())},)
+                        if plan.label_extension_truncated else ()))
         report = DatasetBuildReportV1(sources=source_records, issues=cs_issues, quality={
             "worker_rows": len(worker.frame), "label_rows": len(evaluator.frame),
             "membership_count": int(membership.loc[study_mask].sum()),

@@ -25,6 +25,7 @@ def test_manifest_hash_excludes_only_created_at():
     doc = result().manifest
     assert dataset_manifest_fingerprint(dict(doc, created_at="2025-01-01T00:00:00Z")) == dataset_manifest_fingerprint(dict(doc, created_at="2025-01-02T00:00:00Z"))
     assert dataset_manifest_fingerprint(dict(doc, request_sha256="d" * 64, created_at="2025-01-01T00:00:00Z")) != dataset_manifest_fingerprint(dict(doc, created_at="2025-01-01T00:00:00Z"))
+    assert dataset_manifest_fingerprint(dict(doc, build_fingerprint="e" * 64)) != dataset_manifest_fingerprint(doc)
 
 
 def test_repeated_publish_returns_same_fingerprints(tmp_path):

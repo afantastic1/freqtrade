@@ -23,6 +23,7 @@ class TemporalPlanV1:
     label_extension_start: datetime
     label_extension_end: datetime
     timeframe: str
+    label_extension_truncated: bool = False
 
 
 def build_temporal_plan(request: ResearchRequestV2, policy: CampaignPolicyV1) -> TemporalPlanV1:
@@ -35,15 +36,14 @@ def build_temporal_plan(request: ResearchRequestV2, policy: CampaignPolicyV1) ->
         raise ValueError("request interval outside selected split")
     step = timedelta(seconds=timeframe_to_seconds(request.timeframe))
     warmup_start = max(split.start, request.start - request.lookback_bars * step)
-    label_end = request.end + request.label_horizon_bars * step
-    if label_end > split.end:
-        raise ValueError("label extension exceeds selected split end")
+    requested_label_end = request.end + request.label_horizon_bars * step
+    label_end = min(requested_label_end, split.end)
     return TemporalPlanV1(
         split_start=split.start, split_end=split.end,
         study_start=request.start, study_end=request.end,
         warmup_start=warmup_start, warmup_end=request.start,
         label_extension_start=request.start, label_extension_end=label_end,
-        timeframe=request.timeframe,
+        timeframe=request.timeframe, label_extension_truncated=requested_label_end > split.end,
     )
 
 

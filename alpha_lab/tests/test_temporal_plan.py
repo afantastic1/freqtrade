@@ -52,6 +52,15 @@ def test_label_extension_includes_horizon_bar():
     assert plan.label_extension_end == req.end + timedelta(minutes=10)
 
 
+def test_label_extension_is_clipped_and_marked_at_split_boundary():
+    req, policy = request()
+    split = policy.splits["discovery"]
+    req = replace(req, start=split.end - timedelta(minutes=10), end=split.end)
+    plan = build_temporal_plan(req, policy)
+    assert plan.label_extension_end == split.end
+    assert plan.label_extension_truncated
+
+
 def test_partition_purges_unavailable_train_labels_and_applies_embargo():
     labels = pd.DataFrame({"decision_time": pd.to_datetime(["2023-01-01T00:00Z", "2023-01-01T00:05Z", "2023-01-01T00:10Z", "2023-01-01T00:20Z"], utc=True), "label_available_time": pd.to_datetime(["2023-01-01T00:05Z", "2023-01-01T00:20Z", "2023-01-01T00:16Z", "2023-01-01T00:25Z"], utc=True)})
     train, test = partition_temporal_samples(labels, train_end=pd.Timestamp("2023-01-01T00:15Z"), test_end=pd.Timestamp("2023-01-01T01:00Z"), timeframe="5m", embargo_bars=1)

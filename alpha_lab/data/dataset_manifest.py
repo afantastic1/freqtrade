@@ -22,7 +22,6 @@ def _canonical(document: dict) -> bytes:
 def dataset_manifest_fingerprint(document: dict) -> str:
     canonical = dict(document)
     canonical.pop("created_at", None)
-    canonical.pop("build_fingerprint", None)
     return hashlib.sha256(_canonical(canonical)).hexdigest()
 
 
@@ -101,6 +100,7 @@ def publish_dataset(result: DatasetBuildResultV2, output_root: Path) -> DatasetA
         path = paths[name]
         if name == "manifest" and path.exists():
             existing = json.loads(path.read_text())
+            existing.pop("build_fingerprint", None)
             if dataset_manifest_fingerprint(existing) != fingerprint:
                 raise ValueError("conflicting manifest bytes")
         else:

@@ -7,9 +7,9 @@ import pytest
 import alpha_lab.dataset_cli as cli
 
 
-def request_file(tmp_path, start, end, split="holdout", symbols=None):
+def request_file(tmp_path, start, end, split="holdout", symbols=None, mode="time_series"):
     campaign = json.loads((Path(__file__).parents[2] / "alpha_lab_contracts/campaigns/dataset_builder_acceptance-v1.json").read_text())
-    raw = {"protocol_version": "2.0-research-request", "request_id": "cli-test", "campaign_id": campaign["campaign_id"], "policy_version": "1", "campaign_policy_sha256": campaign["policy_sha256"], "start": start, "end": end, "symbols": symbols or ["BTCUSDT"], "timeframe": "5m", "mode": "time_series", "data_types": ["futures_ohlcv"], "split": split, "lookback_bars": 2, "label_horizon_bars": 2, "embargo_bars": 0}
+    raw = {"protocol_version": "2.0-research-request", "request_id": "cli-test", "campaign_id": campaign["campaign_id"], "policy_version": "1", "campaign_policy_sha256": campaign["policy_sha256"], "start": start, "end": end, "symbols": symbols or ["BTCUSDT"], "timeframe": "5m", "mode": mode, "data_types": ["futures_ohlcv"], "split": split, "lookback_bars": 2, "label_horizon_bars": 2, "embargo_bars": 0}
     path = tmp_path / "request.json"
     path.write_text(json.dumps(raw))
     return path
@@ -22,6 +22,7 @@ def fake_builder(monkeypatch):
             pass
         def build(self, request, *, options, universe=None):
             captured["request"] = request
+            captured["universe"] = universe
             artifact = SimpleNamespace(worker_path="worker.parquet", labels_path="labels.parquet", report_path="report.json", manifest_path="manifest.json", fingerprints={"worker": "a" * 64})
             return SimpleNamespace(manifest={"request_sha256": request.sha256()}, artifact=artifact)
     monkeypatch.setattr(cli, "DatasetBuilderV2", Builder)
@@ -69,3 +70,10 @@ def test_dataset_cli_does_not_mutate_panel_cli_compatibility(tmp_path, monkeypat
     request = request_file(tmp_path, "2026-02-01T00:00:00Z", "2026-02-01T01:00:00Z")
     assert cli.main(argv(tmp_path, request)) == 0
     assert panel_cli.read_bytes() == before
+
+
+def test_dataset_cli_requires_explicit_cross_sectional_universe(tmp_path, monkeypatch):
+    fake_builder(monkeypatch)
+    request = request_file(tmp_path, "2026-02-01T00:00:00Z", "2026-02-01T01:00:00Z", mode="cross_sectional")
+    assert cli.main(argv(tmp_path, request)) == 2
+    assert cli.main(argv(tmp_path, request) + ["--universe", "fixed"]) == 0
