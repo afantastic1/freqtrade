@@ -115,4 +115,6 @@ jobs:
       - name: Verify freeze manifest
         env:
           UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/alpha-lab-governance-venv
-        run: uv run --project alpha_lab_service --locked python -m alpha_lab_service.governance
+        run: |
+          uv run --project alpha_lab_service --locked python -m alpha_lab.freeze --manifest alpha_lab/freeze-manifest-core-v1.2.json
+          uv run --project alpha_lab_service --locked python -m alpha_lab_service.governance

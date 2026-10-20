@@ -36,8 +36,8 @@ def test_ci_triggers_and_checks_all_service_security_boundaries():
 
 
 def test_new_service_manifest_covers_its_verifier_worker_and_admission_gate():
-    manifest = ROOT / "alpha_lab_service/protocol-manifest-v2.json"
-    assert verify_manifest(ROOT, manifest, manifest_version="2.0-python-factor-service") == []
+    manifest = ROOT / "alpha_lab_service/protocol-manifest-v3.json"
+    assert verify_manifest(ROOT, manifest, manifest_version="3.0-python-factor-service") == []
     expected = {
         "alpha_lab_service/manifest.py",
         "alpha_lab_service/governance.py",
@@ -45,6 +45,7 @@ def test_new_service_manifest_covers_its_verifier_worker_and_admission_gate():
         "scripts/alpha_lab_admission_gate.py",
         "docs/alpha_lab/python-factor-execution-protocol-v1.md",
         "alpha_lab_contracts/research_request_v2.py",
+        "alpha_lab/data/schemas/availability-rule-v1.schema.json",
     }
     import json
     files = json.loads(manifest.read_text(encoding="utf-8"))["files"]
@@ -73,11 +74,11 @@ def test_alpha_lab_contracts_are_covered_by_ci_and_codeowners():
     assert "alpha_lab_contracts/**" in service_text
 
 
-def test_active_governance_selects_v13_and_service_v2():
+def test_active_governance_selects_v14_and_service_v3():
     import json
     from alpha_lab_service import governance
 
-    assert governance.V13_GOVERNANCE.name == "freeze-manifest-v1.3.json"
-    assert governance.SERVICE_MANIFEST.name == "protocol-manifest-v2.json"
+    assert governance.V14_GOVERNANCE.name == "freeze-manifest-v1.4.json"
+    assert governance.SERVICE_MANIFEST.name == "protocol-manifest-v3.json"
     manifest = json.loads(governance.SERVICE_MANIFEST.read_text(encoding="utf-8"))
     assert "alpha_lab_contracts/research_request_v2.py" in manifest["files"]

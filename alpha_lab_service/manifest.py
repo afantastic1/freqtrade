@@ -17,6 +17,7 @@ SERVICE_FILES = (
     ".github/CODEOWNERS",
 )
 SERVICE_V2_FILES = SERVICE_FILES + ("alpha_lab_contracts/",)
+SERVICE_V3_FILES = SERVICE_V2_FILES + ("alpha_lab/", "docs/alpha_lab/dynamic_dataset_builder_acceptance.md")
 GOVERNANCE_FILES = (
     ".github/CODEOWNERS",
     ".github/workflows/alpha-lab-freeze.yml",
@@ -28,11 +29,16 @@ GOVERNANCE_V13_FILES = GOVERNANCE_FILES + (
     "alpha_lab_service/governance.py",
     "alpha_lab_service/protected-files.json",
 )
-EXCLUDED_MANIFESTS = {
+GOVERNANCE_V14_FILES = GOVERNANCE_V13_FILES + ("alpha_lab/freeze-manifest-core-v1.2.json",)
+EXCLUDED_SERVICE_MANIFESTS = {
     "alpha_lab_service/protocol-manifest-v1.json",
     "alpha_lab_service/protocol-manifest-v2.json",
+    "alpha_lab_service/protocol-manifest-v3.json",
+}
+EXCLUDED_GOVERNANCE_MANIFESTS = {
     "alpha_lab/freeze-manifest-v1.2.json",
     "alpha_lab/freeze-manifest-v1.3.json",
+    "alpha_lab/freeze-manifest-v1.4.json",
 }
 
 
@@ -46,9 +52,11 @@ def _sha256(path: Path) -> str:
 
 def _paths(root: Path, governance: bool, manifest_version: str) -> list[Path]:
     if governance:
-        patterns = GOVERNANCE_V13_FILES if manifest_version == "1.3-governance" else GOVERNANCE_FILES
+        patterns = (GOVERNANCE_V14_FILES if manifest_version == "1.4-governance" else
+                    GOVERNANCE_V13_FILES if manifest_version == "1.3-governance" else GOVERNANCE_FILES)
     else:
-        patterns = SERVICE_V2_FILES if manifest_version == "2.0-python-factor-service" else SERVICE_FILES
+        patterns = (SERVICE_V3_FILES if manifest_version == "3.0-python-factor-service" else
+                    SERVICE_V2_FILES if manifest_version == "2.0-python-factor-service" else SERVICE_FILES)
     result: set[Path] = set()
     for item in patterns:
         candidate = root / item
@@ -66,13 +74,14 @@ def _paths(root: Path, governance: bool, manifest_version: str) -> list[Path]:
 def build_manifest(root: Path, *, governance: bool = False, manifest_version: str | None = None) -> dict:
     defaults = {True: "1.2-governance", False: "1.0-python-factor-service"}
     manifest_version = manifest_version or defaults[governance]
-    supported = {"1.2-governance", "1.3-governance"} if governance else {"1.0-python-factor-service", "2.0-python-factor-service"}
+    supported = {"1.2-governance", "1.3-governance", "1.4-governance"} if governance else {"1.0-python-factor-service", "2.0-python-factor-service", "3.0-python-factor-service"}
     if manifest_version not in supported:
         raise ValueError(f"unsupported {'governance' if governance else 'service'} manifest version: {manifest_version}")
+    excluded = EXCLUDED_GOVERNANCE_MANIFESTS if governance else EXCLUDED_SERVICE_MANIFESTS
     files = {
         path.relative_to(root).as_posix(): _sha256(path)
         for path in _paths(root, governance, manifest_version)
-        if path.relative_to(root).as_posix() not in EXCLUDED_MANIFESTS
+        if path.relative_to(root).as_posix() not in excluded
     }
     return {
         "manifest_version": manifest_version,
