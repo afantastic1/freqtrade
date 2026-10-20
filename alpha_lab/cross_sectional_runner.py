@@ -42,6 +42,35 @@ def _sha(path: Path) -> str:
             digest.update(chunk)
     return digest.hexdigest()
 
+def _code_fingerprint(
+    paths: list[Path],
+    *,
+    root: Path | None = None,
+) -> str:
+    repo_root = (
+        root if root is not None
+        else Path(__file__).resolve().parents[1]
+    ).resolve()
+
+    digests = {}
+
+    for path in paths:
+        resolved = Path(path).resolve(strict=True)
+
+        relative = resolved.relative_to(
+            repo_root
+        ).as_posix()
+
+        if relative in digests:
+            raise ValueError(
+                f"duplicate code path: {relative}"
+            )
+
+        digests[relative] = _sha(resolved)
+
+    return hashlib.sha256(
+        canonical_json(digests).encode("utf-8")
+    ).hexdigest()
 
 def _validate_research_window(config: dict):
     """Reject invalid or held-out windows before reading a panel artifact."""
@@ -174,9 +203,12 @@ def run_cross_sectional(
         Path(__file__).resolve().parents[1] / "data_engineering" / "schemas" / "catalog-manifest-v2.schema.json",
         Path(__file__).resolve().parents[1] / "data_engineering" / "schemas" / "pit-evidence-v2.schema.json",
     ]
-    feature_source_hash = hashlib.sha256(canonical_json(
-        {p.name: _sha(p) for p in feature_code_paths}
-    ).encode()).hexdigest()
+    # feature_source_hash = hashlib.sha256(canonical_json(
+    #     {p.name: _sha(p) for p in feature_code_paths}
+    # ).encode()).hexdigest()
+    feature_source_hash = _code_fingerprint(
+    feature_code_paths
+    )
     code_paths = [Path(__file__), *feature_code_paths,
                   Path(__file__).parent / "cross_sectional_cli.py",
                   Path(__file__).parent / "data" / "cross_sectional_dataset.py",
@@ -187,7 +219,8 @@ def run_cross_sectional(
                   Path(__file__).parent / "data" / "market_panel.py",
                   Path(__file__).parent / "data" / "universe.py",
                   Path(__file__).parent / "stats" / "multiple_testing.py"]
-    code_hash = hashlib.sha256(canonical_json({p.name: _sha(p) for p in code_paths}).encode()).hexdigest()
+    # code_hash = hashlib.sha256(canonical_json({p.name: _sha(p) for p in code_paths}).encode()).hexdigest()
+    code_hash = _code_fingerprint(code_paths)
     fingerprint = panel.fingerprint()
     identity = {"engine_version": ENGINE_VERSION, "protocol_version": PROTOCOL_VERSION,
                 "method_version": METHOD_VERSION, "mode": "cross_sectional",
