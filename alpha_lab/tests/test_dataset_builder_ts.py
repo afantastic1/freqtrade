@@ -75,6 +75,21 @@ def test_builder_ts_rejects_label_extension_past_split(tmp_path):
         builder.build(request, options=options)
 
 
+def test_builder_ts_rejects_wholly_missing_primary_source_in_preserve_mode(tmp_path):
+    builder, request, options, _ = setup_build(tmp_path)
+    original = builder.resolver
+    resolved = original.resolve(request, __import__("alpha_lab.data.temporal_plan", fromlist=["build_temporal_plan"]).build_temporal_plan(request, builder.policy_registry.get(request.campaign_id, request.policy_version, request.campaign_policy_sha256)), options)[0]
+    empty = type("Resolved", (), {"identity": resolved.identity, "manifest_sha256": resolved.manifest_sha256, "observations": resolved.observations.iloc[0:0], "availability": resolved.availability.iloc[0:0], "quality": resolved.quality})()
+    class Resolver:
+        def _expected_identity(self, *args):
+            return original._expected_identity(*args)
+        def resolve(self, *args):
+            return (empty,)
+    builder.resolver = Resolver()
+    with pytest.raises(ValueError, match="no observations"):
+        builder.build(request, options=options)
+
+
 @pytest.mark.parametrize(
     ("data_type", "data_kind", "value_column", "feature"),
     [

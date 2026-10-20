@@ -67,6 +67,8 @@ class DatasetBuilderV2:
         primary_source = next((source for source in sources if source.identity == self.resolver._expected_identity(symbol, primary, request.timeframe)), None)
         if primary_source is None:
             raise ValueError("primary market source is missing")
+        if primary_source.observations.empty:
+            raise ValueError("primary market source has no observations in the planned interval")
         if primary_source.availability.pit_status.eq("UNVERIFIED").any():
             raise ValueError("UNVERIFIED availability cannot enter worker input")
         step = pd.Timedelta(seconds=timeframe_to_seconds(request.timeframe))
@@ -159,6 +161,8 @@ class DatasetBuilderV2:
             source = next((item for item in sources if item.identity == identity), None)
             if source is None:
                 raise ValueError(f"primary market source missing for {symbol}")
+            if source.observations.empty:
+                raise ValueError(f"primary market source has no observations for {symbol}")
             if source.availability.pit_status.eq("UNVERIFIED").any():
                 raise ValueError("UNVERIFIED availability cannot enter worker input")
             frame = source.availability.copy(deep=True)
