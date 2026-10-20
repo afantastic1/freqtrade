@@ -134,6 +134,7 @@ class SourceArtifact:
     local_path: Path | None = None
     source_root_id: str | None = None
     relative_path: str | None = None
+    metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not isinstance(self.identity, DatasetIdentity):
@@ -156,6 +157,7 @@ class SourceArtifact:
             _validate_identity_text(self.source_root_id, "source_root_id")
         if self.relative_path is not None:
             _validate_identity_text(self.relative_path, "relative_path")
+        object.__setattr__(self, "metadata", dict(self.metadata))
 
 
 @dataclass(frozen=True, slots=True)
@@ -211,12 +213,23 @@ class ValidationReceipt:
     start: datetime
     end: datetime
     validation_fingerprint: str
+    quality_status: str = "AVAILABLE"
+    issue_codes: tuple[str, ...] = ()
+    row_count: int = 0
+    content_fingerprint: str | None = None
 
     def __post_init__(self) -> None:
         for name in ("dataset_id", "request_id", "converter_version", "schema_version"):
             _validate_identity_text(getattr(self, name), name)
         for name in ("source_sha256", "normalized_sha256", "validation_fingerprint"):
             _validate_digest(getattr(self, name), name)
+        if self.content_fingerprint is not None:
+            _validate_digest(self.content_fingerprint, "content_fingerprint")
+        if self.quality_status not in {"AVAILABLE", "PARTIAL", "INVALID", "MISSING"}:
+            raise ValueError("invalid validation quality_status")
+        if self.row_count < 0:
+            raise ValueError("row_count must not be negative")
+        object.__setattr__(self, "issue_codes", tuple(self.issue_codes))
         start, end = _validate_utc_bounds(self.start, self.end)
         object.__setattr__(self, "start", start)
         object.__setattr__(self, "end", end)

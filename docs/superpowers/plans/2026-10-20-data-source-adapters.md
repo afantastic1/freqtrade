@@ -87,7 +87,7 @@
 - [x] **Step 2: Run `pytest tests/test_data_engineering_source_vision.py scripts/test_binance_vision_tradfi.py -q` and confirm new tests fail while existing parser expectations remain captured.** New adapter import failed as expected; first integrated run exposed an importer monkeypatch compatibility issue, subsequently fixed.
 - [x] **Step 3: Extract reusable importer operations and implement the crypto adapter** without altering existing importer command behavior.
 - [x] **Step 4: Run the focused Vision tests and existing importer suite; confirm all pass.** Combined focused set: 32 passed.
-- [ ] **Step 5: Commit** as `feat(data): add Binance Vision crypto adapter`.
+- [x] **Step 5: Commit** as `feat(data): add Binance Vision crypto adapter`.
 
 ### Task 4: Planning, validation receipts, and resumable stages
 
@@ -102,10 +102,10 @@
 - Plan statuses include `PRESENT`, `MISSING`, `UNAVAILABLE`, `INVALID`, and `PLANNED`; execution statuses include the spec's download/checksum/parse/quality/publish failures.
 - Receipt binds source SHA-256, normalized SHA-256, dataset identity, exact bounds, adapter/converter version, and schema version.
 
-- [ ] **Step 1: Write failing pipeline tests** for gap/month planning, no download/write in dry-run, normalized-only PRESENT semantics (existing Feather never suppresses conversion), sparse event completeness, cadence/duplicate/numeric/OHLCV validation, bound validation, latest invalid revision behavior, source change after validation, and journal restart states.
-- [ ] **Step 2: Run `pytest tests/test_data_engineering_source_pipeline.py -q` and confirm the stage semantics fail.**
-- [ ] **Step 3: Implement per-month planning, source-preserving validation, digest-bound receipts, and journal states `DISCOVERED`, `DOWNLOADED`, `VALIDATED`, `OBJECT_PUBLISHED`, `CATALOG_REGISTERED` plus terminal failures.** An invalid latest catalog revision is returned as `INVALID`; do not fall back silently.
-- [ ] **Step 4: Run the focused pipeline tests; confirm dry-run has no payload requests and recovery finishes catalog registration without claiming premature presence.**
+- [x] **Step 1: Write failing pipeline tests** for gap/month planning, no download/write in dry-run, normalized-only PRESENT semantics (existing Feather never suppresses conversion), sparse event completeness, cadence/duplicate/numeric/OHLCV validation, bound validation, latest invalid revision behavior, source change after validation, and journal restart states.
+- [x] **Step 2: Run `pytest tests/test_data_engineering_source_pipeline.py -q` and confirm the stage semantics fail.** Missing pipeline import was observed before implementation.
+- [x] **Step 3: Implement per-month planning, source-preserving validation, digest-bound receipts, and journal states `DISCOVERED`, `DOWNLOADED`, `VALIDATED`, `OBJECT_PUBLISHED`, `CATALOG_REGISTERED` plus terminal failures.** An invalid latest catalog revision is returned as `INVALID`; do not fall back silently.
+- [x] **Step 4: Run the focused pipeline tests; confirm dry-run has no payload requests and recovery finishes catalog registration without claiming premature presence.** Pipeline: 15 passed; combined new source and catalog tests: 107 passed.
 - [ ] **Step 5: Commit** as `feat(data): add staged source validation pipeline`.
 
 ### Task 5: Immutable Parquet publication and Catalog v3 snapshots

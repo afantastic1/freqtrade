@@ -54,6 +54,7 @@ class FreqtradeFeatherAdapter:
         *,
         exchange: str,
         market_type: str,
+        event_cadence: str | None = None,
     ) -> None:
         if not source_roots:
             raise ValueError("at least one configured source root is required")
@@ -64,6 +65,7 @@ class FreqtradeFeatherAdapter:
         self.source_roots = {str(key): Path(value) for key, value in source_roots.items()}
         self.exchange = exchange
         self.market_type = market_type
+        self.event_cadence = event_cadence
 
     def discover(self, request: DatasetRequest) -> list[SourceArtifact]:
         """Return one bounded artifact for each observed month in matching files."""
@@ -118,6 +120,10 @@ class FreqtradeFeatherAdapter:
                             local_path=source_path,
                             source_root_id=root_id,
                             relative_path=relative_path,
+                            metadata=(
+                                {"event_cadence": self.event_cadence}
+                                if self.event_cadence is not None else {}
+                            ),
                         )
                     )
         return artifacts
