@@ -102,7 +102,13 @@ def assign_availability(
     frame["availability_rule_version"] = rule.version
     frame["availability_manifest_sha256"] = manifest_sha256
     if rule.mode == "fixed_delay":
-        basis = _utc_series(frame["close_time"], "close_time") if "close_time" in frame else frame.event_time
+        if "close_time" in frame:
+            basis = _utc_series(frame["close_time"], "close_time")
+        elif identity.data_kind == "ohlcv":
+            from freqtrade.exchange import timeframe_to_seconds
+            basis = frame.event_time + pd.Timedelta(seconds=timeframe_to_seconds(identity.timeframe))
+        else:
+            basis = frame.event_time
         frame["available_time"] = basis + pd.Timedelta(rule.fixed_delay)
         frame["pit_status"] = "ASSUMED"
     elif evidence is None:
