@@ -26,7 +26,7 @@ def policy_dict() -> dict[str, object]:
         "splits": {
             "discovery": {"start": "2023-01-01T00:00:00Z", "end": "2024-01-01T00:00:00Z"},
             "validation": {"start": "2024-01-01T00:00:00Z", "end": "2025-01-01T00:00:00Z"},
-            "holdout": {"start": "2025-01-01T00:00:00Z", "end": "2026-01-01T00:00:00Z"},
+            "holdout": {"start": "2025-01-01T00:00:00Z", "end": "2027-01-01T00:00:00Z"},
         },
         "parameter_bounds": {
             "lookback_bars": {"min": 1, "max": 500},
