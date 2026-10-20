@@ -307,6 +307,21 @@ def test_sparse_open_interest_does_not_require_timeframe_alignment():
     assert result["issues"] == []
 
 
+def test_explicit_event_cadence_rejects_off_grid_observations():
+    quality = _quality_contracts_module()
+    frame = pd.DataFrame({
+        "date": pd.to_datetime([
+            "2025-01-01T00:00:00Z", "2025-01-01T00:30:00Z", "2025-01-01T01:00:00Z",
+        ], utc=True),
+        "funding_rate": [0.001, 0.002, 0.003],
+    })
+    result = quality.validate_observations(
+        frame, data_kind="funding_rate", timeframe=None, event_cadence="1h"
+    )
+    assert result["status"] == "INVALID"
+    assert "TIMEFRAME_MISALIGNED" in {issue["code"] for issue in result["issues"]}
+
+
 def test_discovery_reports_invalid_quality_instead_of_available(tmp_path):
     adapter = _freqtrade_feather_module()
     frame = _ohlcv_frame(["2025-01-01T00:00:00Z"])
@@ -335,6 +350,29 @@ def test_registration_persists_invalid_quality_report(tmp_path):
     )
     assert record["manifest"]["quality"]["status"] == "INVALID"
     assert record["manifest"]["quality"]["issues"]
+
+
+def test_validation_preserves_original_unsorted_timestamp_issue(tmp_path):
+    adapter = _freqtrade_feather_module()
+    catalog = _v3_catalog_module()
+    source_root = tmp_path / "data"
+    source_root.mkdir()
+    frame = _ohlcv_frame(["2025-02-01T00:00:00Z", "2025-01-01T00:00:00Z"])
+    source = source_root / "BTC_USDT_USDT-5m-futures.feather"
+    frame.to_feather(source)
+    record = adapter.register_feather_file(
+        tmp_path / "catalog", source_root_id="source", source_root=source_root,
+        relative_path=Path(source.name), exchange="binance", market_type="futures",
+        asset="BTC", exchange_symbol="BTC/USDT:USDT", data_kind="ohlcv",
+        timeframe="5m", source="freqtrade-local",
+    )
+    result = catalog.validate_dataset(
+        tmp_path / "catalog", record["manifest"]["dataset_id"],
+        source_roots={"source": source_root},
+    )
+    assert record["manifest"]["quality"]["status"] == "INVALID"
+    assert result["status"] == "INVALID"
+    assert "UNSORTED_TIMESTAMP" in {item["code"] for item in result["issues"]}
 
 
 def test_mark_price_adapter_accepts_native_freqtrade_mark_candles(tmp_path):
@@ -549,6 +587,11 @@ def test_get_coverage_ignores_rows_outside_verified_partitions(tmp_path):
     )
     manifest = record["manifest"]
     manifest["partitions"] = manifest["partitions"][:1]
+    manifest["quality"] = {
+        "status": "AVAILABLE", "issues": [],
+        "summary": {"row_count": 2, "first_observation": "2025-01-01T00:00:00Z",
+                    "last_observation": "2025-01-01T00:05:00Z"},
+    }
     catalog.register_dataset(tmp_path / "catalog", manifest)
     result = catalog.get_coverage(
         tmp_path / "catalog", manifest["dataset_id"],
@@ -565,6 +608,32 @@ def test_validate_dataset_returns_invalid_for_corrupt_manifest(tmp_path):
     datasets.mkdir(parents=True)
     (datasets / "bad.json").write_text("{}")
     result = catalog.validate_dataset(tmp_path, "broken", source_roots={})
+    assert result["status"] == "INVALID"
+    assert result["issues"]
+
+
+def test_validate_dataset_rejects_symlinked_catalog_ancestor(tmp_path):
+    adapter = _freqtrade_feather_module()
+    source_root = tmp_path / "source"
+    source_root.mkdir()
+    source = source_root / "BTC_USDT_USDT-5m-futures.feather"
+    _ohlcv_frame(["2025-01-01T00:00:00Z"]).to_feather(source)
+    external_catalog = tmp_path / "external-catalog"
+    record = adapter.register_feather_file(
+        external_catalog, source_root_id="source", source_root=source_root,
+        relative_path=Path(source.name), exchange="binance", market_type="futures",
+        asset="BTC", exchange_symbol="BTC/USDT:USDT", data_kind="ohlcv",
+        timeframe="5m", source="freqtrade-local",
+    )
+    configured_catalog = tmp_path / "configured-catalog"
+    configured_catalog.mkdir()
+    (configured_catalog / "catalog-v3").symlink_to(
+        external_catalog / "catalog-v3", target_is_directory=True
+    )
+    result = _v3_catalog_module().validate_dataset(
+        configured_catalog, record["manifest"]["dataset_id"],
+        source_roots={"source": source_root},
+    )
     assert result["status"] == "INVALID"
     assert result["issues"]
 
@@ -593,6 +662,29 @@ def test_event_cadence_is_optional_and_enables_complete_coverage(tmp_path):
     )
     assert result["status"] == "AVAILABLE"
     assert result["missing_observations"] == 0
+
+
+def test_registration_marks_off_cadence_event_rows_invalid(tmp_path):
+    adapter = _freqtrade_feather_module()
+    source_root = tmp_path / "events"
+    source_root.mkdir()
+    source = source_root / "BTC_USDT_USDT-1h-funding_rate.feather"
+    pd.DataFrame({
+        "date": pd.to_datetime([
+            "2025-01-01T00:00:00Z", "2025-01-01T00:30:00Z", "2025-01-01T01:00:00Z",
+        ], utc=True),
+        "funding_rate": [0.001, 0.002, 0.003],
+    }).to_feather(source)
+    record = adapter.register_feather_file(
+        tmp_path / "catalog", source_root_id="events", source_root=source_root,
+        relative_path=Path(source.name), exchange="binance", market_type="futures",
+        asset="BTC", exchange_symbol="BTC/USDT:USDT", data_kind="funding_rate",
+        timeframe=None, event_cadence="1h", source="freqtrade-local",
+    )
+    assert record["manifest"]["quality"]["status"] == "INVALID"
+    assert "TIMEFRAME_MISALIGNED" in {
+        item["code"] for item in record["manifest"]["quality"]["issues"]
+    }
 
 
 def test_get_coverage_reports_dense_gaps_and_exclusive_end(tmp_path):

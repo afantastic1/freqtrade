@@ -228,7 +228,8 @@ def _read_and_summarize(path: Path, identity: dict[str, Any]):
     from .quality.contracts import validate_observations
 
     quality = validate_observations(
-        frame, data_kind=identity["data_kind"], timeframe=identity["timeframe"]
+        frame, data_kind=identity["data_kind"], timeframe=identity["timeframe"],
+        event_cadence=identity.get("event_cadence"),
     )
     frame = frame.copy()
     frame[timestamp_field] = pd.to_datetime(frame[timestamp_field], utc=True)
@@ -236,7 +237,8 @@ def _read_and_summarize(path: Path, identity: dict[str, Any]):
 
     timeframe = identity["timeframe"]
     cadence_policy = DATA_KIND_CONTRACTS[identity["data_kind"]]["cadence_policy"]
-    step = _parse_timeframe(timeframe) if timeframe and cadence_policy == "dense" else None
+    cadence = timeframe if cadence_policy == "dense" else identity.get("event_cadence")
+    step = _parse_timeframe(cadence) if cadence else None
     partitions = []
     source_sha = _source_digest(path)
     dates = pd.DatetimeIndex(frame[timestamp_field])
@@ -253,7 +255,8 @@ def _read_and_summarize(path: Path, identity: dict[str, Any]):
                 expected = int((last - first).total_seconds() // step) + 1
                 missing = max(0, expected - len(part))
             part_quality = validate_observations(
-                part, data_kind=identity["data_kind"], timeframe=identity["timeframe"]
+                part, data_kind=identity["data_kind"], timeframe=identity["timeframe"],
+                event_cadence=identity.get("event_cadence"),
             )
             partitions.append(
                 {
@@ -373,6 +376,7 @@ def register_feather_file(
         **parsed,
         "source_root_id": source_root_id,
         "source_path": normalized_relative,
+        "event_cadence": event_cadence,
     }
     frame, partitions, _, quality = _read_and_summarize(path, identity)
     status = "INVALID" if quality["status"] == "INVALID" else (

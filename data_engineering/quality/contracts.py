@@ -23,7 +23,8 @@ def _timeframe_seconds(value: str | None) -> int | None:
 
 
 def validate_observations(
-    frame: pd.DataFrame, *, data_kind: str, timeframe: str | None
+    frame: pd.DataFrame, *, data_kind: str, timeframe: str | None,
+    event_cadence: str | None = None,
 ) -> dict[str, Any]:
     """Return a quality summary without changing or repairing ``frame``."""
     contract = DATA_KIND_CONTRACTS.get(data_kind)
@@ -73,15 +74,21 @@ def validate_observations(
             issue("DUPLICATE_TIMESTAMP", "timestamps must be unique")
         if not stamps.is_monotonic_increasing:
             issue("UNSORTED_TIMESTAMP", "timestamps must be increasing")
-        step = _timeframe_seconds(timeframe)
+        step = _timeframe_seconds(
+            timeframe if contract["cadence_policy"] == "dense" else event_cadence
+        )
         if step is not None and contract["cadence_policy"] == "dense":
             step_ns = step * 1_000_000_000
             if any(int(value) % step_ns for value in stamps.as_unit("ns").asi8):
                 issue("TIMEFRAME_MISALIGNED", "timestamps do not align to the timeframe")
-            if contract["cadence_policy"] == "dense":
-                expected = int((stamps.max().value - stamps.min().value) // (step * 1_000_000_000)) + 1
-                cadence["expected_observations"] = expected
-                cadence["missing_observations"] = max(0, expected - count)
+        elif step is not None and event_cadence is not None:
+            step_ns = step * 1_000_000_000
+            if any(int(value) % step_ns for value in stamps.as_unit("ns").asi8):
+                issue("TIMEFRAME_MISALIGNED", "timestamps do not align to the declared event cadence")
+        if step is not None and (contract["cadence_policy"] == "dense" or event_cadence is not None):
+            expected = int((stamps.max().value - stamps.min().value) // (step * 1_000_000_000)) + 1
+            cadence["expected_observations"] = expected
+            cadence["missing_observations"] = max(0, expected - count)
 
     numeric_fields: set[str] = set()
     if data_kind == "ohlcv":
