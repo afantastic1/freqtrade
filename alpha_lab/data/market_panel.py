@@ -7,6 +7,8 @@ import json
 import numpy as np
 import pandas as pd
 
+from alpha_lab.data.timeframe import timeframe_to_seconds
+
 
 @dataclass(frozen=True)
 class _GroupedRolling:
@@ -65,8 +67,6 @@ class MarketPanel:
         return cls(pd.concat(frames).sort_index())
 
     def quality_report(self, timeframe: str) -> dict:
-        from freqtrade.exchange import timeframe_to_seconds
-
         step = pd.Timedelta(seconds=timeframe_to_seconds(timeframe))
         result = {}
         for symbol, group in self.frame.groupby(level="symbol"):

@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
 
-from freqtrade.exchange import timeframe_to_seconds
+from alpha_lab.data.timeframe import timeframe_to_seconds
 
 from alpha_lab.config import ExperimentConfig
 from alpha_lab.data.loader import load_ohlcv

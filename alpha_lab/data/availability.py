@@ -12,6 +12,8 @@ from typing import Mapping
 
 import pandas as pd
 
+from alpha_lab.data.timeframe import timeframe_to_seconds
+
 from data_engineering.sources.contracts import DatasetIdentity
 
 
@@ -152,7 +154,6 @@ def assign_availability(
         if "close_time" in frame:
             basis = _utc_series(frame["close_time"], "close_time")
         elif identity.data_kind == "ohlcv":
-            from freqtrade.exchange import timeframe_to_seconds
             basis = frame.event_time + pd.Timedelta(seconds=timeframe_to_seconds(identity.timeframe))
         else:
             basis = frame.event_time

@@ -104,7 +104,7 @@ def realized_volatility(
     if periods <= 1:
         raise ValueError("periods must be >= 2")
 
-    from freqtrade.exchange import timeframe_to_seconds
+    from alpha_lab.data.timeframe import timeframe_to_seconds
 
     step_seconds = timeframe_to_seconds(market.timeframe)
     frame = market.frame
@@ -464,7 +464,7 @@ def cost_sensitivity(
     同时报告 `mean_position` 与 `buy_and_hold` 参考行：2023–2024 BTC
     单边上涨会让任何偏多仓位看起来都很好，必须能把这种污染显式看出。
     """
-    from freqtrade.exchange import timeframe_to_seconds
+    from alpha_lab.data.timeframe import timeframe_to_seconds
 
     step_seconds = timeframe_to_seconds(market.timeframe)
     bars_per_year = 365 * 24 * 3600 / step_seconds

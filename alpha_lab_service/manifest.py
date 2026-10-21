@@ -49,6 +49,8 @@ SERVICE_V5_FILES = SERVICE_V4_FILES + (
     "examples/opencode.alpha-lab.jsonc",
     "docs/alpha_lab/local-factory.md",
 )
+SERVICE_V6_FILES = SERVICE_V5_FILES
+SERVICE_V7_FILES = SERVICE_V6_FILES + ("docs/alpha_lab/local-factory-live-acceptance.md",)
 GOVERNANCE_FILES = (
     ".github/CODEOWNERS",
     ".github/workflows/alpha-lab-freeze.yml",
@@ -66,14 +68,27 @@ GOVERNANCE_V16_FILES = GOVERNANCE_V15_FILES + (
     "alpha_lab/freeze-manifest-core-v1.3.json",
     "alpha_lab_service/protocol-manifest-v5.json",
 )
+GOVERNANCE_V17_FILES = GOVERNANCE_V16_FILES + (
+    "alpha_lab/freeze-manifest-core-v1.4.json",
+    "alpha_lab_service/protocol-manifest-v6.json",
+)
+GOVERNANCE_V18_FILES = GOVERNANCE_V17_FILES + (
+    "alpha_lab/freeze-manifest-core-v1.5.json",
+    "alpha_lab_service/protocol-manifest-v7.json",
+    "alpha_lab/freeze-manifest-v1.8.json",
+)
 EXCLUDED_SERVICE_MANIFESTS = {
     "alpha_lab_service/protocol-manifest-v1.json",
     "alpha_lab_service/protocol-manifest-v2.json",
     "alpha_lab_service/protocol-manifest-v3.json",
     "alpha_lab_service/protocol-manifest-v4.json",
     "alpha_lab_service/protocol-manifest-v5.json",
+    "alpha_lab_service/protocol-manifest-v6.json",
+    "alpha_lab_service/protocol-manifest-v7.json",
     "alpha_lab/freeze-manifest-v1.5.json",
     "alpha_lab/freeze-manifest-v1.6.json",
+    "alpha_lab/freeze-manifest-v1.7.json",
+    "alpha_lab/freeze-manifest-v1.8.json",
 }
 EXCLUDED_GOVERNANCE_MANIFESTS = {
     "alpha_lab/freeze-manifest-v1.2.json",
@@ -81,6 +96,8 @@ EXCLUDED_GOVERNANCE_MANIFESTS = {
     "alpha_lab/freeze-manifest-v1.4.json",
     "alpha_lab/freeze-manifest-v1.5.json",
     "alpha_lab/freeze-manifest-v1.6.json",
+    "alpha_lab/freeze-manifest-v1.7.json",
+    "alpha_lab/freeze-manifest-v1.8.json",
 }
 
 
@@ -94,12 +111,16 @@ def _sha256(path: Path) -> str:
 
 def _paths(root: Path, governance: bool, manifest_version: str) -> list[Path]:
     if governance:
-        patterns = (GOVERNANCE_V16_FILES if manifest_version == "1.6-governance" else
+        patterns = (GOVERNANCE_V18_FILES if manifest_version == "1.8-governance" else
+                    GOVERNANCE_V17_FILES if manifest_version == "1.7-governance" else
+                    GOVERNANCE_V16_FILES if manifest_version == "1.6-governance" else
                     GOVERNANCE_V15_FILES if manifest_version == "1.5-governance" else
                     GOVERNANCE_V14_FILES if manifest_version == "1.4-governance" else
                     GOVERNANCE_V13_FILES if manifest_version == "1.3-governance" else GOVERNANCE_FILES)
     else:
-        patterns = (SERVICE_V5_FILES if manifest_version == "5.0-python-factor-service" else
+        patterns = (SERVICE_V7_FILES if manifest_version == "7.0-python-factor-service" else
+                    SERVICE_V6_FILES if manifest_version == "6.0-python-factor-service" else
+                    SERVICE_V5_FILES if manifest_version == "5.0-python-factor-service" else
                     SERVICE_V4_FILES if manifest_version == "4.0-python-factor-service" else
                     SERVICE_V3_FILES if manifest_version == "3.0-python-factor-service" else
                     SERVICE_V2_FILES if manifest_version == "2.0-python-factor-service" else SERVICE_FILES)
@@ -120,7 +141,7 @@ def _paths(root: Path, governance: bool, manifest_version: str) -> list[Path]:
 def build_manifest(root: Path, *, governance: bool = False, manifest_version: str | None = None) -> dict:
     defaults = {True: "1.2-governance", False: "1.0-python-factor-service"}
     manifest_version = manifest_version or defaults[governance]
-    supported = {"1.2-governance", "1.3-governance", "1.4-governance", "1.5-governance", "1.6-governance"} if governance else {"1.0-python-factor-service", "2.0-python-factor-service", "3.0-python-factor-service", "4.0-python-factor-service", "5.0-python-factor-service"}
+    supported = {"1.2-governance", "1.3-governance", "1.4-governance", "1.5-governance", "1.6-governance", "1.7-governance", "1.8-governance"} if governance else {"1.0-python-factor-service", "2.0-python-factor-service", "3.0-python-factor-service", "4.0-python-factor-service", "5.0-python-factor-service", "6.0-python-factor-service", "7.0-python-factor-service"}
     if manifest_version not in supported:
         raise ValueError(f"unsupported {'governance' if governance else 'service'} manifest version: {manifest_version}")
     excluded = EXCLUDED_GOVERNANCE_MANIFESTS if governance else EXCLUDED_SERVICE_MANIFESTS

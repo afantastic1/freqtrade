@@ -32,7 +32,7 @@ def test_service_manifest_detects_modified_and_untracked_protected_files(tmp_pat
 
 
 def test_service_manifest_detects_tampering_of_real_protected_source(tmp_path):
-    manifest_path = ROOT / "alpha_lab_service/protocol-manifest-v5.json"
+    manifest_path = ROOT / "alpha_lab_service/protocol-manifest-v7.json"
     document = json.loads(manifest_path.read_text(encoding="utf-8"))
     for relative in document["files"]:
         source = ROOT / relative
@@ -40,14 +40,14 @@ def test_service_manifest_detects_tampering_of_real_protected_source(tmp_path):
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, target)
 
-    copied_manifest = tmp_path / "alpha_lab_service/protocol-manifest-v5.json"
+    copied_manifest = tmp_path / "alpha_lab_service/protocol-manifest-v7.json"
     shutil.copyfile(manifest_path, copied_manifest)
-    assert verify_manifest(tmp_path, copied_manifest, manifest_version="5.0-python-factor-service") == []
+    assert verify_manifest(tmp_path, copied_manifest, manifest_version="7.0-python-factor-service") == []
 
     real_source_copy = tmp_path / "alpha_lab_service/protocol.py"
     real_source_copy.write_bytes(real_source_copy.read_bytes() + b"\n# tampered\n")
     assert "changed: alpha_lab_service/protocol.py" in verify_manifest(
-        tmp_path, copied_manifest, manifest_version="5.0-python-factor-service"
+        tmp_path, copied_manifest, manifest_version="7.0-python-factor-service"
     )
 
 

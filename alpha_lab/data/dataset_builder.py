@@ -25,7 +25,7 @@ from .pit_labels import (
     historical_membership_asof,
 )
 from .universe import DynamicUniverse, HistoricalUniverse
-from freqtrade.exchange import timeframe_to_seconds
+from alpha_lab.data.timeframe import timeframe_to_seconds
 
 
 def _effective_max_age(source, data_type, options):

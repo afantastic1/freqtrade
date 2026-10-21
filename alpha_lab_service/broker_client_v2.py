@@ -34,6 +34,15 @@ class BrokerClientV2:
         try:
             with urllib.request.urlopen(request, timeout=self.timeout) as response:
                 payload = json.loads(response.read())
+        except urllib.error.HTTPError as exc:
+            try:
+                payload = json.loads(exc.read())
+            except (OSError, json.JSONDecodeError):
+                payload = {}
+            error = payload.get("error", "v2 Broker rejected request")
+            category = payload.get("category")
+            suffix = f" ({category})" if isinstance(category, str) else ""
+            raise RuntimeError(f"{error}{suffix}") from exc
         except (urllib.error.URLError, TimeoutError) as exc:
             raise RuntimeError("v2 Broker unavailable") from exc
         if "result" not in payload:

@@ -279,7 +279,7 @@ def _validate_init_v2(init):
     if not isinstance(params, dict) or len(params) > 64 or any(
         not isinstance(key, str) or not key or len(key) > 64 or value is None or isinstance(value, (list, dict))
         or isinstance(value, float) and not math.isfinite(value)
-        for value in params.values()
+        for key, value in params.items()
     ):
         raise ValueError("parameters must be finite JSON scalars")
     mode = init["execution_mode"]

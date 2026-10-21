@@ -129,7 +129,7 @@ def efficiency_ratio(market, periods: int = 24) -> pd.Series:
 
     ER 高 = 路径接近单边趋势；ER 低 = 来回震荡。取值在 [0, 1]。
     """
-    from freqtrade.exchange import timeframe_to_seconds
+    from alpha_lab.data.timeframe import timeframe_to_seconds
 
     if periods <= 1:
         raise ValueError("periods must be >= 2")

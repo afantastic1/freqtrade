@@ -4,6 +4,7 @@ on:
   push:
     branches: ["fix/**", "codex/**", "my_dev"]
     paths:
+      - "alpha_lab/**"
       - "alpha_lab_service/**"
       - "alpha_lab_local/**"
       - "alpha_lab_contracts/**"
@@ -21,15 +22,22 @@ on:
       - "alpha_lab/freeze-manifest-v1.3.json"
       - "alpha_lab/freeze-manifest-v1.5.json"
       - "alpha_lab/freeze-manifest-v1.6.json"
+      - "alpha_lab/freeze-manifest-v1.7.json"
+      - "alpha_lab/freeze-manifest-v1.8.json"
       - "alpha_lab/freeze-manifest-core-v1.3.json"
+      - "alpha_lab/freeze-manifest-core-v1.4.json"
+      - "alpha_lab/freeze-manifest-core-v1.5.json"
       - "alpha_lab_service/protocol-manifest-v2.json"
       - "alpha_lab_service/protocol-manifest-v4.json"
       - "alpha_lab_service/protocol-manifest-v5.json"
+      - "alpha_lab_service/protocol-manifest-v6.json"
+      - "alpha_lab_service/protocol-manifest-v7.json"
       - "docs/alpha_lab/python-factor-*.md"
       - "docs/alpha_lab/unified-descriptive-evidence-acceptance.*"
       - "docs/alpha_lab/agent-research-gateway-acceptance.*"
   pull_request:
     paths:
+      - "alpha_lab/**"
       - "alpha_lab_service/**"
       - "alpha_lab_local/**"
       - "alpha_lab_contracts/**"
@@ -47,10 +55,16 @@ on:
       - "alpha_lab/freeze-manifest-v1.3.json"
       - "alpha_lab/freeze-manifest-v1.5.json"
       - "alpha_lab/freeze-manifest-v1.6.json"
+      - "alpha_lab/freeze-manifest-v1.7.json"
+      - "alpha_lab/freeze-manifest-v1.8.json"
       - "alpha_lab/freeze-manifest-core-v1.3.json"
+      - "alpha_lab/freeze-manifest-core-v1.4.json"
+      - "alpha_lab/freeze-manifest-core-v1.5.json"
       - "alpha_lab_service/protocol-manifest-v2.json"
       - "alpha_lab_service/protocol-manifest-v4.json"
       - "alpha_lab_service/protocol-manifest-v5.json"
+      - "alpha_lab_service/protocol-manifest-v6.json"
+      - "alpha_lab_service/protocol-manifest-v7.json"
       - "docs/alpha_lab/python-factor-*.md"
       - "docs/alpha_lab/unified-descriptive-evidence-acceptance.*"
       - "docs/alpha_lab/agent-research-gateway-acceptance.*"
@@ -76,7 +90,11 @@ jobs:
         run: |
           docker build --pull=false --build-arg PIP_INDEX_URL=https://pypi.org/simple -t alpha-lab-factor-worker:ci containers/alpha-lab-factor-worker
           echo "ALPHA_LAB_WORKER_IMAGE=$(docker image inspect --format '{{.Id}}' alpha-lab-factor-worker:ci)" >> "$GITHUB_ENV"
-      - name: Verify v1.6 governance and service manifests
+      - name: Build trusted local MCP image
+        run: |
+          docker build -f containers/alpha-lab-local-service/Dockerfile -t alpha-lab-local-service:ci .
+          echo "ALPHA_LAB_LOCAL_SERVICE_IMAGE=alpha-lab-local-service:ci" >> "$GITHUB_ENV"
+      - name: Verify v1.8 governance and service manifests
         run: uv run --project alpha_lab_service --locked python -m alpha_lab_service.governance
       - name: Run protocol, contract, store, MCP, causal and actual-container tests
         run: uv run --project alpha_lab_service --locked python -m pytest -q alpha_lab_service/tests/test_worker_container.py alpha_lab_service/tests/test_end_to_end.py alpha_lab_service/tests

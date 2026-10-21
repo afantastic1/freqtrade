@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from alpha_lab.data.market_panel import MarketPanel
-from freqtrade.exchange import timeframe_to_seconds
+from alpha_lab.data.timeframe import timeframe_to_seconds
 
 
 CROSS_SECTIONAL_LABEL_VERSION = "cross-sectional-research-proxy-v1"

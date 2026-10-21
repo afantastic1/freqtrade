@@ -7,6 +7,7 @@ from freqtrade.configuration.timerange import TimeRange
 from freqtrade.enums import CandleType
 
 from alpha_lab.data.dataset import MarketData
+from alpha_lab.data.timeframe import timeframe_to_seconds
 
 
 def from_freqtrade_dataframe(
@@ -21,8 +22,6 @@ def from_freqtrade_dataframe(
     Freqtrade 的 date 表示 K 线开盘时间。
     availability_delay 是显式的研究假设，不是实际测量延迟。
     """
-    from freqtrade.exchange import timeframe_to_seconds
-
     if "date" not in df.columns:
         raise ValueError("Missing Freqtrade date column")
 

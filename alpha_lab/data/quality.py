@@ -3,7 +3,7 @@ from dataclasses import dataclass
 import pandas as pd
 
 from alpha_lab.data.dataset import MarketData
-from freqtrade.exchange import timeframe_to_seconds
+from alpha_lab.data.timeframe import timeframe_to_seconds
 
 
 @dataclass(frozen=True)

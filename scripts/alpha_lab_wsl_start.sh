@@ -8,7 +8,7 @@ STATE_DIR="$RUN_DIR/store"
 SECRET_DIR="$RUN_DIR/secrets"
 CATALOG_ROOT="${ALPHA_LAB_CATALOG_ROOT:-/tmp/alpha-lab-pr09/catalog-v3}"
 NORMALIZED_ROOT="${ALPHA_LAB_NORMALIZED_ROOT:-/tmp/alpha-lab-pr09/normalized}"
-WORKER_IMAGE="sha256:ac09f79dc85832d1cbe09a0efc9a14f210552d0479aefdb4b3be87ef72f9dced"
+WORKER_IMAGE="sha256:bb2aced00809732898f7c62c4a525af71beebc1190d60ba78c0924ee5862119f"
 SERVICE_IMAGE="alpha-lab-local-service:my-dev"
 MCP_CONTAINER="alpha-lab-mcp"
 BROKER_PID_FILE="$RUN_DIR/broker.pid"
@@ -91,7 +91,7 @@ echo "$STARTED_BROKER_PID" > "$BROKER_PID_FILE"
 trap cleanup_on_failure EXIT
 
 broker_ready=0
-for _ in $(seq 1 40); do
+for _ in $(seq 1 240); do
     if (echo > /dev/tcp/127.0.0.1/8765) >/dev/null 2>&1; then
         broker_ready=1
         break
@@ -99,7 +99,8 @@ for _ in $(seq 1 40); do
     sleep 0.25
 done
 if [[ "$broker_ready" != 1 ]]; then
-    echo "WSL Broker failed to start; inspect the private broker log." >&2
+    echo "WSL Broker failed to start; broker log follows:" >&2
+    tail -80 "$BROKER_LOG" >&2 || true
     kill "$(<"$BROKER_PID_FILE")" 2>/dev/null || true
     exit 2
 fi
@@ -146,6 +147,8 @@ for _ in $(seq 1 80); do
     sleep 0.25
 done
 if [[ "$container_ready" != 1 ]]; then
+    echo "MCP readiness check failed; container logs follow:" >&2
+    docker logs "$MCP_CONTAINER" >&2 || true
     echo "MCP service failed to become ready; inspect docker logs $MCP_CONTAINER." >&2
     exit 2
 fi

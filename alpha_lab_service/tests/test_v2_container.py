@@ -36,6 +36,15 @@ def broker(*, timeout=60, image=IMAGE):
     return WorkerBroker(WorkerProfile(image=image, timeout_seconds=timeout, protocol_versions=("1.0", "2.0")))
 
 
+def test_v2_container_accepts_nonempty_factor_parameters():
+    request = frames(
+        "def compute_factor(history, *, as_of, params): return {'BTCUSDT': float(params['lookback'])}"
+    )
+    request[0]["params"] = {"lookback": 12}
+    result = broker().run_frames_v2("v2-parameters", "chunk-00000000", request)
+    assert result[1]["values"] == {"BTCUSDT": 12.0}
+
+
 def test_v2_container_denies_network_socket_protected_data_and_root_writes():
     source = """
 import os, socket

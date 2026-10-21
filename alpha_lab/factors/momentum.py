@@ -1,7 +1,7 @@
 
 import pandas as pd
 
-from freqtrade.exchange import timeframe_to_seconds
+from alpha_lab.data.timeframe import timeframe_to_seconds
 from alpha_lab.data.dataset import MarketData
 
 

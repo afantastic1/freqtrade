@@ -164,7 +164,7 @@ def load_spot(timeframe: str, start: str, end: str):
 
 
 def bars_per_day(timeframe: str) -> int:
-    from freqtrade.exchange import timeframe_to_seconds
+    from alpha_lab.data.timeframe import timeframe_to_seconds
 
     return int(86400 / timeframe_to_seconds(timeframe))
 

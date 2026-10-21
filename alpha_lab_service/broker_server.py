@@ -26,6 +26,14 @@ MAX_CONCURRENCY = 2
 ALLOWED_ROW_FIELDS = {"open_time", "symbol", "available_time", "open", "high", "low", "close", "volume"}
 
 
+class WorkerExecutionError(RuntimeError):
+    """Safe worker failure category; never includes submitted code or output."""
+
+    def __init__(self, category: str = "WorkerError"):
+        self.category = category if re.fullmatch(r"[A-Za-z][A-Za-z0-9]{0,63}", category) else "WorkerError"
+        super().__init__("Worker failed in isolated runtime")
+
+
 def validate_worker_frames(task_id: str, frames: list[dict]) -> None:
     if not isinstance(task_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", task_id):
         raise ValueError("invalid task id")
@@ -147,6 +155,16 @@ class WorkerBroker:
 
             reader = threading.Thread(target=drain_stdout, daemon=True)
             reader.start()
+
+            def worker_error_category() -> str:
+                try:
+                    records = [json.loads(line) for line in output.decode("utf-8").splitlines() if line]
+                    if records and records[-1].get("type") == "worker_error":
+                        return str(records[-1].get("category", "WorkerError"))
+                except (UnicodeDecodeError, json.JSONDecodeError, AttributeError):
+                    pass
+                return "WorkerError"
+
             try:
                 assert process.stdin is not None
                 process.stdin.write(payload.encode("utf-8"))
@@ -159,14 +177,18 @@ class WorkerBroker:
                 raise TimeoutError("Worker exceeded wall-clock limit") from exc
             except BrokenPipeError as exc:
                 process.wait(timeout=2)
-                raise RuntimeError("Worker rejected request") from exc
+                category = worker_error_category()
+                raise WorkerExecutionError(category) from exc
             finally:
                 reader.join(timeout=5)
             if oversized.is_set():
                 self._kill_container(cidfile)
                 raise RuntimeError("Worker output exceeded byte limit")
             if process.returncode != 0:
-                raise RuntimeError("Worker failed in isolated runtime")
+                # Worker emits only a stable exception class, never traceback, source,
+                # factor output, or input values. Preserve that safe diagnostic.
+                category = worker_error_category()
+                raise WorkerExecutionError(category)
             try:
                 result = [json.loads(line) for line in output.decode("utf-8").splitlines() if line]
             except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -238,7 +260,12 @@ def make_handler(broker: WorkerBroker, token: str):
             except TimeoutError:
                 body = b'{"error":"TIMED_OUT"}'
                 self.send_response(408)
-            except (ValueError, RuntimeError, KeyError, TypeError, json.JSONDecodeError):
+            except WorkerExecutionError as exc:
+                print(f"Alpha Lab Worker rejected execution: {exc.category}", flush=True)
+                body = json.dumps({"error": "WORKER_FAILED", "category": exc.category},
+                                  separators=(",", ":")).encode()
+                self.send_response(422)
+            except (ValueError, RuntimeError, KeyError, TypeError, json.JSONDecodeError) as exc:
                 body = b'{"error":"EXECUTION_BLOCKED"}'
                 self.send_response(422)
             self.send_header("Content-Type", "application/json")

@@ -1,0 +1,22 @@
+{
+  "files": {
+    ".github/CODEOWNERS": "a7a1b431d597632eb1c0ed63dccf851f78a324dceca60a64e130fdb31a60fab9",
+    ".github/workflows/alpha-lab-freeze.yml": "65b402682d237139fda6733dac240bb9f7216ab019adfaf6f664e33b9d5c52d7",
+    ".github/workflows/alpha-lab-python-service.yml": "75532ac882aa3b2d5ee415bc0b5829d2cc6f2469c1d32aa97e6767b61b7fb140",
+    "alpha_lab/freeze-manifest-core-v1.2.json": "5f9dee2fabaee7155af332c960f7927bb257cccb6662ccb3dee157a576714696",
+    "alpha_lab/freeze-manifest-core-v1.3.json": "ba8c03d2ab7c5d5d9c0ff68ba377ff95de9f307bd561613ad8636147f06bb9df",
+    "alpha_lab/freeze-manifest-core-v1.4.json": "86aacdf13619da89156f4bf2acb5ebf27d9022cdfa5a6304c5c8c1b6214c609b",
+    "alpha_lab/freeze-manifest-core-v1.5.json": "ffb0a3e4bf67a068d067a0b039ff2aa40b54d34075586c2cdbdbb6c1cffc8278",
+    "alpha_lab_service/governance.py": "4daf8634cb89540ec1ce385fd57fe8fb2c57829a20b9e95c4d2f9d81e0d698bb",
+    "alpha_lab_service/manifest.py": "3458b90c1b7a607a60a543f117bd1923b951fe6693e192c665ec3c075742fe9b",
+    "alpha_lab_service/protected-files.json": "e3345163e65dfee17c042384bd706144da5ba97325a0ff468310ae2edeb4f5a7",
+    "alpha_lab_service/protocol-manifest-v4.json": "ea3ac6a0f0e942b84228ae389f28e15c49ee174e2415111144cf47ac8b6e56b8",
+    "alpha_lab_service/protocol-manifest-v5.json": "c7d3ff8687b459c437e66d13fa702145dc12517f8bfde6fe35d31df13ae87750",
+    "alpha_lab_service/protocol-manifest-v6.json": "9c3ba485ab750f110e36613fcc35f88e2415b5ba65e4c43d6d4641eb07afc84c",
+    "alpha_lab_service/protocol-manifest-v7.json": "f430dbb8a2bc9a8b488847a40e992fbf978e58f2702fa9b599fccfa736bc7062",
+    "scripts/alpha_lab_admission_gate.py": "04fc6f1564a0ed32ec73a06adbe688b6dd2c514a59c27d22f2749e005d464332"
+  },
+  "hash": "sha256",
+  "kind": "governance-boundary",
+  "manifest_version": "1.8-governance"
+}

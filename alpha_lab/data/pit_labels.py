@@ -7,7 +7,7 @@ import pandas as pd
 from alpha_lab.data.dataset import MarketData
 from alpha_lab.data.market_panel import MarketPanel
 from alpha_lab.data.universe import HistoricalUniverse
-from freqtrade.exchange import timeframe_to_seconds
+from alpha_lab.data.timeframe import timeframe_to_seconds
 
 
 def forward_returns_v2(data: MarketData, horizon: int) -> pd.DataFrame:

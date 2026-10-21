@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -46,7 +48,7 @@ def test_factory_builds_trusted_v2_and_agent_dependencies_from_private_config(tm
     assert services.v2_service is not None
     assert services.v2_service.store.path == Path(_config(tmp_path)["research_store_path"])
     assert services.v2_service.worker_identity == (
-        "sha256:ac09f79dc85832d1cbe09a0efc9a14f210552d0479aefdb4b3be87ef72f9dced"
+        "sha256:bb2aced00809732898f7c62c4a525af71beebc1190d60ba78c0924ee5862119f"
     )
     assert services.agent_gateway.isolation_verifier is not None
 
@@ -145,3 +147,37 @@ def test_host_preflight_accepts_only_the_mounted_discovery_years(tmp_path):
 
     (dataset / "year=2026").mkdir()
     assert not _discovery_partitions_only(tmp_path)
+
+
+def test_factory_import_does_not_require_freqtrade_runtime_package():
+    blocker = """
+import importlib.abc
+import sys
+class BlockFreqtrade(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if (fullname == 'freqtrade' or fullname.startswith('freqtrade.')
+                or fullname == 'cachetools' or fullname.startswith('cachetools.')):
+            raise ModuleNotFoundError(f'{fullname} intentionally unavailable in service image')
+sys.meta_path.insert(0, BlockFreqtrade())
+import alpha_lab_local.factory
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", blocker], cwd=ROOT,
+        env={**os.environ, "PYTHONPATH": str(ROOT)},
+        capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_built_service_image_starts_and_imports_factory_without_freqtrade():
+    image = os.environ.get("ALPHA_LAB_LOCAL_SERVICE_IMAGE")
+    if not image:
+        pytest.skip("Docker service image smoke test is enabled by CI and WSL acceptance")
+    result = subprocess.run(
+        ["docker", "run", "--rm", "--network", "none", "--read-only",
+         "--cap-drop=ALL", "--security-opt=no-new-privileges:true",
+         "--entrypoint", "python", image, "-c",
+         "import alpha_lab_local.factory"],
+        capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 0, result.stderr

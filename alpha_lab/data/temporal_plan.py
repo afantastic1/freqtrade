@@ -9,7 +9,7 @@ import pandas as pd
 
 from alpha_lab_contracts.campaign_policy_v1 import CampaignPolicyV1
 from alpha_lab_contracts.research_request_v2 import ResearchRequestV2
-from freqtrade.exchange import timeframe_to_seconds
+from alpha_lab.data.timeframe import timeframe_to_seconds
 
 
 @dataclass(frozen=True)

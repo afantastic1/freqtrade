@@ -1,4 +1,4 @@
-"""Active v1.6 integrity gate: historical and active core plus current governance and service."""
+"""Active v1.8 integrity gate: historical and active core plus current governance and service."""
 
 from __future__ import annotations
 
@@ -13,10 +13,29 @@ from alpha_lab_service.manifest import verify_manifest
 
 ROOT = Path(__file__).resolve().parents[1]
 V11_MANIFEST = ROOT / "alpha_lab/freeze-manifest-v1.1.json"
-CORE_V13_MANIFEST = ROOT / "alpha_lab/freeze-manifest-core-v1.3.json"
-V16_GOVERNANCE = ROOT / "alpha_lab/freeze-manifest-v1.6.json"
-SERVICE_MANIFEST = ROOT / "alpha_lab_service/protocol-manifest-v5.json"
-REPLACED_BOUNDARY = {".github/CODEOWNERS", ".github/workflows/alpha-lab-freeze.yml"}
+CORE_V15_MANIFEST = ROOT / "alpha_lab/freeze-manifest-core-v1.5.json"
+V18_GOVERNANCE = ROOT / "alpha_lab/freeze-manifest-v1.8.json"
+SERVICE_MANIFEST = ROOT / "alpha_lab_service/protocol-manifest-v7.json"
+REPLACED_BOUNDARY = {
+    ".github/CODEOWNERS",
+    ".github/workflows/alpha-lab-freeze.yml",
+    # Dependency-only changes are locked by the new active core manifest.
+    "alpha_lab/data/market_panel.py",
+    "alpha_lab/data/quality.py",
+    "alpha_lab/data/loader.py",
+    "alpha_lab/data/availability.py",
+    "alpha_lab/data/dataset_builder.py",
+    "alpha_lab/data/pit_labels.py",
+    "alpha_lab/data/temporal_plan.py",
+    "alpha_lab/baseline_cli.py",
+    "alpha_lab/non_ohlcv_cli.py",
+    "alpha_lab/regime_cli.py",
+    "alpha_lab/runner.py",
+    "alpha_lab/evaluation/cross_sectional.py",
+    "alpha_lab/factors/momentum.py",
+    "alpha_lab/labels/cross_sectional.py",
+    "alpha_lab/labels/forward_returns.py",
+}
 
 
 def verify_v11_core() -> list[str]:
@@ -41,9 +60,9 @@ def verify_v11_core() -> list[str]:
 
 def verify_all() -> list[str]:
     errors = verify_v11_core()
-    errors.extend(f"active core v1.3 {item}" for item in verify_core_manifest(ROOT, CORE_V13_MANIFEST))
-    errors.extend(f"v1.6 governance {item}" for item in verify_manifest(ROOT, V16_GOVERNANCE, governance=True, manifest_version="1.6-governance"))
-    errors.extend(f"Python service v5 {item}" for item in verify_manifest(ROOT, SERVICE_MANIFEST, manifest_version="5.0-python-factor-service"))
+    errors.extend(f"active core v1.5 {item}" for item in verify_core_manifest(ROOT, CORE_V15_MANIFEST))
+    errors.extend(f"v1.8 governance {item}" for item in verify_manifest(ROOT, V18_GOVERNANCE, governance=True, manifest_version="1.8-governance"))
+    errors.extend(f"Python service v7 {item}" for item in verify_manifest(ROOT, SERVICE_MANIFEST, manifest_version="7.0-python-factor-service"))
     return errors
 
 
@@ -52,7 +71,7 @@ def main() -> int:
     for error in errors:
         print(error)
     if not errors:
-        print("Alpha Lab v1.6 governance, service v5, active core v1.3, and historical core v1.1: valid")
+        print("Alpha Lab v1.8 governance, service v7, active core v1.5, and historical core v1.1: valid")
     return 1 if errors else 0
 
 

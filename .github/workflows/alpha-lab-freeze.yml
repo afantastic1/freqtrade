@@ -12,7 +12,11 @@ on:
       - "alpha_lab_contracts/**"
       - "alpha_lab_service/**"
       - "alpha_lab/freeze-manifest-core-v1.3.json"
+      - "alpha_lab/freeze-manifest-core-v1.4.json"
+      - "alpha_lab/freeze-manifest-core-v1.5.json"
       - "alpha_lab/freeze-manifest-v1.6.json"
+      - "alpha_lab/freeze-manifest-v1.7.json"
+      - "alpha_lab/freeze-manifest-v1.8.json"
       - "alpha_lab_local/**"
       - "containers/alpha-lab-factor-worker/**"
       - "containers/alpha-lab-local-service/**"
@@ -42,7 +46,11 @@ on:
       - "alpha_lab_contracts/**"
       - "alpha_lab_service/**"
       - "alpha_lab/freeze-manifest-core-v1.3.json"
+      - "alpha_lab/freeze-manifest-core-v1.4.json"
+      - "alpha_lab/freeze-manifest-core-v1.5.json"
       - "alpha_lab/freeze-manifest-v1.6.json"
+      - "alpha_lab/freeze-manifest-v1.7.json"
+      - "alpha_lab/freeze-manifest-v1.8.json"
       - "alpha_lab_local/**"
       - "containers/alpha-lab-factor-worker/**"
       - "containers/alpha-lab-local-service/**"
@@ -143,5 +151,5 @@ jobs:
         env:
           UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/alpha-lab-governance-venv
         run: |
-          uv run --project alpha_lab_service --locked python -m alpha_lab.freeze --manifest alpha_lab/freeze-manifest-core-v1.3.json
+          uv run --project alpha_lab_service --locked python -m alpha_lab.freeze --manifest alpha_lab/freeze-manifest-core-v1.5.json
           uv run --project alpha_lab_service --locked python -m alpha_lab_service.governance
