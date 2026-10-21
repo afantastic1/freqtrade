@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from alpha_lab_service.protocol import MAX_SOURCE_BYTES
+from alpha_lab_service.worker_protocol_v2 import validate_worker_frames_v2
 from alpha_lab_service.worker_profile import WorkerProfile, docker_run_args, profile_from_file
 
 MAX_FRAME_BYTES = 16 * 1024 * 1024
@@ -112,12 +113,25 @@ class WorkerBroker:
         finally:
             self._slots.release()
 
-    def _run_container(self, task_id: str, frames: list[dict]) -> list[dict]:
+    def run_frames_v2(self, task_id: str, chunk_id: str, frames: list[dict]) -> list[dict]:
+        if "2.0" not in self.profile.protocol_versions:
+            raise RuntimeError("pinned Worker image does not support protocol 2.0")
+        validate_worker_frames_v2(task_id, chunk_id, frames)
+        if not self._slots.acquire(blocking=False):
+            raise RuntimeError("broker capacity exhausted")
+        try:
+            return self._run_container(task_id, frames, chunk_id=chunk_id)
+        finally:
+            self._slots.release()
+
+    def _run_container(self, task_id: str, frames: list[dict], *, chunk_id: str | None = None) -> list[dict]:
         payload = "".join(json.dumps(frame, separators=(",", ":"), allow_nan=False) + "\n" for frame in frames)
         with tempfile.TemporaryDirectory(prefix="alpha-worker-") as temp_dir:
             cidfile = Path(temp_dir) / "container.id"
             args = docker_run_args(self.profile)
             args[-4:-4] = ["--cidfile", str(cidfile), "--label", f"alpha-lab-task={task_id}"]
+            if chunk_id is not None:
+                args[-4:-4] = ["--label", f"alpha-lab-chunk={chunk_id}"]
             process = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
             output = bytearray()
             oversized = threading.Event()
@@ -157,7 +171,30 @@ class WorkerBroker:
                 result = [json.loads(line) for line in output.decode("utf-8").splitlines() if line]
             except (UnicodeDecodeError, json.JSONDecodeError) as exc:
                 raise RuntimeError("Worker emitted invalid protocol output") from exc
-            if not result or result[0].get("type") != "ready" or len(result) != len(frames) - 1:
+            protocol_version = frames[0].get("protocol_version")
+            if protocol_version == "2.0":
+                stateful = frames[0].get("execution_mode") == "stateful"
+                expected_count = len(frames) - 1 if stateful else len(frames) - 2
+                ready = {"type": "ready", "protocol_version": "2.0"}
+                if stateful:
+                    checkpoint = result[-1] if result else None
+                    if (not isinstance(checkpoint, dict)
+                            or set(checkpoint) != {"type", "plan_hash", "state"}
+                            or checkpoint.get("type") != "checkpoint"
+                            or checkpoint.get("plan_hash") != frames[0]["plan_hash"]):
+                        raise RuntimeError("Worker omitted or corrupted v2 state checkpoint")
+                    from alpha_lab_service.worker_protocol_v2 import validate_state_payload
+
+                    validate_state_payload(
+                        checkpoint["state"], frames[0]["state_schema_id"], frames[0]["state_schema_version"]
+                    )
+            else:
+                expected_count = len(frames) - 1
+                if not result or not isinstance(result[0], dict) or result[0].get("type") != "ready":
+                    raise RuntimeError("Worker output does not match request steps")
+                ready = result[0]
+            if (not result or not isinstance(result[0], dict)
+                    or result[0] != ready or len(result) != expected_count):
                 raise RuntimeError("Worker output does not match request steps")
             return result
 
@@ -175,9 +212,10 @@ class WorkerBroker:
 def make_handler(broker: WorkerBroker, token: str):
     class Handler(BaseHTTPRequestHandler):
         def do_POST(self):
-            if self.path != "/v1/run":
+            if self.path not in {"/v1/run", "/v2/run-chunk"}:
                 self.send_error(404)
                 return
+            is_v2 = self.path == "/v2/run-chunk"
             supplied = self.headers.get("Authorization", "")
             if not hmac.compare_digest(supplied, f"Bearer {token}"):
                 self.send_error(401)
@@ -188,9 +226,13 @@ def make_handler(broker: WorkerBroker, token: str):
                 return
             try:
                 request = json.loads(self.rfile.read(length))
-                if set(request) != {"task_id", "frames"}:
+                expected = {"task_id", "chunk_id", "frames"} if is_v2 else {"task_id", "frames"}
+                if set(request) != expected:
                     raise ValueError("unexpected request fields")
-                result = broker.run_frames(request["task_id"], request["frames"])
+                if is_v2:
+                    result = broker.run_frames_v2(request["task_id"], request["chunk_id"], request["frames"])
+                else:
+                    result = broker.run_frames(request["task_id"], request["frames"])
                 body = json.dumps({"result": result}, separators=(",", ":")).encode()
                 self.send_response(200)
             except TimeoutError:

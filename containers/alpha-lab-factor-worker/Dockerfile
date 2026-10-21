@@ -1,6 +1,7 @@
 FROM python:3.11.10-slim-bookworm@sha256:840e180ebcc6e5c8efab209c43f5e40fd2af98cb49db5c7103c90539c56bb30e
 
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    ALPHA_LAB_FACTOR_PROTOCOLS=1.0,2.0
 ARG PIP_INDEX_URL=https://pypi.org/simple
 RUN groupadd --gid 65532 worker && useradd --uid 65532 --gid 65532 --no-create-home --shell /usr/sbin/nologin worker \
     && mkdir -p /opt/factor-worker \

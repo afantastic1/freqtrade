@@ -85,6 +85,7 @@ def test_chunk_frames_use_point_in_time_history_and_read_only_warmup():
     second_frames = build_chunk_frames(run, plan.chunks[1])
     assert first_frames[1]["type"] == "warmup"
     assert first_frames[1]["phase"] == "initialize"
+    assert first_frames[0]["state"] is None
     assert second_frames[1]["phase"] == "read_only"
     assert not any(frame["type"] == "result" for frame in first_frames)
     assert all(row["available_time"] <= first_frames[2]["as_of"] for row in first_frames[2]["history"])

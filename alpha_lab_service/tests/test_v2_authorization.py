@@ -118,6 +118,15 @@ def test_unknown_research_request_id_is_rejected_before_build():
     assert builder.received is None
 
 
+def test_unregistered_state_schema_is_rejected_before_dataset_build():
+    builder = FakeDatasetBuilder()
+    with pytest.raises(ValueError, match="state schema"):
+        resolve(builder=builder, factor_overrides={
+            "execution_mode": "stateful", "state_schema_id": "attacker-schema", "state_schema_version": "1",
+        })
+    assert builder.received is None
+
+
 def test_identity_changes_with_worker_evaluator_and_dataset_identity():
     baseline = resolve().identity_hash
     other_worker = resolve(worker_identity="sha256:" + "b" * 64).identity_hash

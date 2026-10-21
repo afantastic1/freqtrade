@@ -159,6 +159,7 @@ def build_chunk_frames(run: AuthorizedFactorRunV2, chunk: ChunkV2) -> list[dict]
         "execution_mode": factor.execution_mode,
         "state_schema_id": factor.state_schema_id,
         "state_schema_version": factor.state_schema_version,
+        "state": None,
     }, {
         "type": "warmup", "phase": warmup_phase,
         "as_of": _iso(warmup_stamp), "history": warmup_rows,

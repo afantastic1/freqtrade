@@ -19,6 +19,7 @@ class WorkerProfile:
     tmpfs_size: str = "16m"
     timeout_seconds: int = 60
     mounts: tuple[str, ...] = ()
+    protocol_versions: tuple[str, ...] = ("1.0",)
 
     def __post_init__(self):
         if self.image == "BUILD_REQUIRED" or (not self.image.startswith("sha256:") and "@sha256:" not in self.image):
@@ -27,6 +28,8 @@ class WorkerProfile:
             raise ValueError("worker profile must disable networking and host mounts")
         if self.command != ("python", "-I", "/opt/factor-worker/worker.py"):
             raise ValueError("worker command is fixed")
+        if not self.protocol_versions or not set(self.protocol_versions).issubset({"1.0", "2.0"}):
+            raise ValueError("worker protocol versions are unsupported")
         if self.user != "65532:65532":
             raise ValueError("worker must use the fixed unprivileged UID")
         if not self.read_only or self.cap_drop != ("ALL",):
@@ -57,6 +60,9 @@ def profile_from_file(path: Path) -> WorkerProfile:
             or document.get("apparmor") != "docker-default"
             or document.get("seccomp") != "Docker Engine built-in default allowlist"):
         raise ValueError("worker profile security controls mismatch")
+    versions = document.get("protocol_versions", ["1.0"])
+    if not isinstance(versions, list) or not versions:
+        raise ValueError("worker profile must declare supported protocol versions")
     return WorkerProfile(
         image=document["worker_image"],
         user=document["user"],
@@ -66,4 +72,5 @@ def profile_from_file(path: Path) -> WorkerProfile:
         nano_cpus=int(float(document["cpus"]) * 1_000_000_000),
         tmpfs_size=document["tmpfs"]["/tmp"].split(",")[0],
         timeout_seconds=document["timeout_seconds"],
+        protocol_versions=tuple(versions),
     )

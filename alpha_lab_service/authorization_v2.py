@@ -18,6 +18,7 @@ from alpha_lab_contracts.campaign_policy_v1 import CampaignPolicyRegistry
 from alpha_lab_contracts.research_request_v2 import ResearchRequestV2
 from alpha_lab_service.input_schemas_v2 import INPUT_SCHEMA_REGISTRY, WorkerInputSchemaV1
 from alpha_lab_service.protocol_v2 import FactorRequestV2, V2_LIMITS, canonical_request_hash_v2
+from alpha_lab_service.worker_protocol_v2 import validate_state_schema
 
 _IMAGE_DIGEST = re.compile(r"^(?:sha256:[0-9a-f]{64}|.+@sha256:[0-9a-f]{64})$")
 
@@ -125,6 +126,8 @@ def resolve_authorized_run(
     schema = INPUT_SCHEMA_REGISTRY.get(
         factor_request.worker_input_schema_id, factor_request.worker_input_schema_version
     )
+    if factor_request.execution_mode == "stateful":
+        validate_state_schema(factor_request.state_schema_id, factor_request.state_schema_version)
 
     dataset = dataset_builder.build(trusted_request, options=dataset_options, universe=universe)
     schema.validate_fields(dataset.worker_input.frame.columns)
