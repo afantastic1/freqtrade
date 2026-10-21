@@ -578,6 +578,35 @@ class ResearchStoreV2:
         return {"run_id": row["run_id"], "task_id": row["task_id"], "evidence_hash": row["evidence_hash"],
                 "evidence": json.loads(row["evidence_json"])}
 
+    def list_history(self, limit: int = 100) -> list[dict]:
+        """Return bounded, sanitized task and Evidence summaries."""
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise ValueError("history limit outside allowed range")
+        with self._connect() as conn:
+            tasks = conn.execute("""
+                SELECT t.task_id, t.request_hash, t.created_at,
+                       (SELECT status FROM task_events e WHERE e.task_id=t.task_id
+                        ORDER BY e.event_id DESC LIMIT 1) AS status
+                FROM tasks t ORDER BY t.created_at DESC, t.task_id DESC LIMIT ?
+            """, (limit,)).fetchall()
+            evidence = conn.execute("""
+                SELECT run_id, evidence_hash, created_at,
+                       json_extract(evidence_json, '$.status') AS status,
+                       json_extract(evidence_json, '$.report') AS report
+                FROM evidence ORDER BY created_at DESC, run_id DESC LIMIT ?
+            """, (limit,)).fetchall()
+        entries = [{
+            "kind": "TASK", "identity": row["task_id"], "created_at": row["created_at"],
+            "payload": {"request_hash": row["request_hash"], "status": row["status"]},
+        } for row in tasks]
+        entries.extend({
+            "kind": "EVIDENCE", "identity": row["run_id"], "created_at": row["created_at"],
+            "payload": {"evidence_hash": row["evidence_hash"], "status": row["status"],
+                        "report": json.loads(row["report"]) if row["report"] else {}},
+        } for row in evidence)
+        entries.sort(key=lambda item: (item["created_at"], item["identity"]), reverse=True)
+        return entries[:limit]
+
     def complete_with_evidence(self, *, task_id: str, run_id: str, evidence: dict) -> str:
         if evidence.get("status") not in {"EXPLORATORY", "DIAGNOSTIC", "NOT_EVALUABLE"}:
             raise ValueError("v2 Evidence must remain descriptive")
