@@ -113,6 +113,57 @@ def test_retry_resumes_from_last_committed_checkpoint_only(tmp_path):
     assert store.get_resume_state("task-1", "chunk-1") == {"count": 1}
 
 
+def test_worker_elapsed_time_is_persisted_and_blocked_attempt_is_terminal(tmp_path):
+    store = new_store(tmp_path)
+    create_task(store)
+    start_task(store)
+    attempt = store.begin_chunk_attempt("task-1", "chunk-0", input_hash="1" * 64, state_in=None)
+    store.record_chunk_failure(
+        "task-1", "chunk-0", attempt, retryable=False,
+        diagnostics={"category": "runtime"}, elapsed_seconds=12.5, blocked=True,
+    )
+    assert store.get_task("task-1")["status"] == "EXECUTION_BLOCKED"
+    assert store.get_total_worker_wall_seconds("task-1") == 12.5
+
+
+def test_restart_closes_orphan_running_attempt_for_safe_replay(tmp_path):
+    store = new_store(tmp_path)
+    create_task(store)
+    start_task(store)
+    assert store.begin_chunk_attempt("task-1", "chunk-0", input_hash="1" * 64, state_in=None) == 1
+    assert store.recover_interrupted_attempts("task-1") == 1
+    assert store.get_chunk("task-1", "chunk-0")["status"] == "RETRYABLE_FAILURE"
+    assert store.get_total_worker_wall_seconds("task-1") >= 0
+    store.append_task_status("task-1", "RUNNING")
+    assert store.begin_chunk_attempt("task-1", "chunk-0", input_hash="1" * 64, state_in=None) == 2
+
+
+def test_retry_input_bytes_and_output_bytes_are_bounded(tmp_path, monkeypatch):
+    import alpha_lab_service.store_v2 as store_v2
+
+    monkeypatch.setattr(store_v2, "V2_LIMITS", store_v2.V2_LIMITS.model_copy(update={
+        "max_total_input_bytes": 10, "max_output_bytes_per_chunk": 16,
+    }))
+    store = new_store(tmp_path)
+    create_task(store)
+    start_task(store)
+    attempt = store.begin_chunk_attempt(
+        "task-1", "chunk-0", input_hash="1" * 64, state_in=None, input_bytes=8,
+    )
+    store.record_chunk_failure("task-1", "chunk-0", attempt, retryable=True)
+    store.append_task_status("task-1", "RUNNING")
+    with pytest.raises(ValueError, match="cumulative Worker input"):
+        store.begin_chunk_attempt("task-1", "chunk-0", input_hash="1" * 64, state_in=None, input_bytes=8)
+    monkeypatch.setattr(store_v2, "V2_LIMITS", store_v2.V2_LIMITS.model_copy(update={
+        "max_total_input_bytes": 100,
+    }))
+    retry = store.begin_chunk_attempt(
+        "task-1", "chunk-0", input_hash="1" * 64, state_in=None, input_bytes=8,
+    )
+    with pytest.raises(ValueError, match="chunk output exceeds"):
+        store.commit_chunk("task-1", "chunk-0", retry, output=[{"value": "x" * 30}], state_out=None)
+
+
 def test_committed_chunk_is_immutable_and_checkpoint_hashes_are_persisted(tmp_path):
     store = new_store(tmp_path)
     create_task(store, stateful=True)

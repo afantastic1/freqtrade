@@ -25,6 +25,7 @@ class ChunkV2:
     evaluation_timestamps: tuple[pd.Timestamp, ...]
     warmup_timestamps: tuple[pd.Timestamp, ...]
     input_bytes: int = 0
+    input_hash: str = ""
 
 
 @dataclass(frozen=True)
@@ -215,11 +216,13 @@ def plan_chunks(run: AuthorizedFactorRunV2, *, max_steps_per_chunk: int | None =
     chunks = []
     total_input_bytes = 0
     for chunk in raw_chunks:
-        size = sum(len(_canonical_bytes(frame)) + 1 for frame in build_chunk_frames(run, chunk))
+        frames = build_chunk_frames(run, chunk)
+        size = sum(len(_canonical_bytes(frame)) + 1 for frame in frames)
         total_input_bytes += size
         if total_input_bytes > V2_LIMITS.max_total_input_bytes:
             raise ValueError("cumulative chunk input exceeds service byte limit")
-        chunks.append(replace(chunk, input_bytes=size))
+        input_hash = hashlib.sha256(_canonical_bytes(frames)).hexdigest()
+        chunks.append(replace(chunk, input_bytes=size, input_hash=input_hash))
     return ChunkPlanV2(run.identity_hash, plan_hash, tuple(chunks), len(timestamps), total_input_bytes, V2_LIMITS.version)
 
 
@@ -227,9 +230,13 @@ def validate_chunk_output(run: AuthorizedFactorRunV2, chunk: ChunkV2, frames: li
     """Validate ready marker and exact ordered result set for one committed chunk."""
     if len(frames) != len(chunk.evaluation_timestamps) + 3:
         raise ValueError("chunk request frame count does not match evaluation plan")
-    if not isinstance(output, list) or len(output) != len(chunk.evaluation_timestamps) + 1:
+    stateful = run.canonical_request_record["factor_request"]["execution_mode"] == "stateful"
+    expected_output_count = len(chunk.evaluation_timestamps) + 1 + int(stateful)
+    if not isinstance(output, list) or len(output) != expected_output_count:
         raise ValueError("Worker output count does not match chunk plan")
-    ready, *results = output
+    ready, *tail = output
+    checkpoint = tail.pop() if stateful else None
+    results = tail
     if ready != {"type": "ready", "protocol_version": V2_PROTOCOL_VERSION}:
         raise ValueError("Worker ready marker violates v2 protocol")
     symbols = set(run.research_request.symbols)
@@ -250,6 +257,14 @@ def validate_chunk_output(run: AuthorizedFactorRunV2, chunk: ChunkV2, frames: li
         if any(isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value))
                for value in values.values()):
             raise ValueError("Worker factor values must be finite numbers")
+    if stateful:
+        from alpha_lab_service.worker_protocol_v2 import validate_state_payload
+
+        if (not isinstance(checkpoint, dict) or set(checkpoint) != {"type", "plan_hash", "state"}
+                or checkpoint.get("type") != "checkpoint" or checkpoint.get("plan_hash") != chunk.plan_hash):
+            raise ValueError("Worker checkpoint is missing or mismatched")
+        factor = FactorRequestV2.model_validate(run.canonical_request_record["factor_request"])
+        validate_state_payload(checkpoint["state"], factor.state_schema_id, factor.state_schema_version)
     if len(_canonical_bytes(output)) > V2_LIMITS.max_output_bytes_per_chunk:
         raise ValueError("serialized chunk output exceeds byte limit")
     return results

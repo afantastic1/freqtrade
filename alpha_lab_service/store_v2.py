@@ -262,13 +262,26 @@ class ResearchStoreV2:
         with self._connect() as conn:
             self._append_task_event(conn, task_id, status, event)
 
-    def begin_chunk_attempt(self, task_id: str, chunk_id: str, *, input_hash: str, state_in: dict | None) -> int:
+    def begin_chunk_attempt(self, task_id: str, chunk_id: str, *, input_hash: str, state_in: dict | None,
+                            input_bytes: int = 0) -> int:
         if not _SHA256.fullmatch(input_hash):
             raise ValueError("chunk input hash must be a SHA-256 value")
+        if type(input_bytes) is not int or input_bytes < 0 or input_bytes > V2_LIMITS.max_input_bytes_per_chunk:
+            raise ValueError("chunk input byte count is outside the service limit")
         state_json, state_hash = _validate_state(state_in)
         with self._connect() as conn:
             if self._latest_status(conn, task_id) != "RUNNING":
                 raise ValueError("task must be RUNNING before a chunk attempt")
+            prior_input = 0
+            for event_row in conn.execute(
+                "SELECT e.event_json FROM chunk_attempt_events e JOIN ("
+                "SELECT chunk_id,attempt_no,MAX(attempt_event_id) event_id FROM chunk_attempt_events "
+                "WHERE task_id=? GROUP BY chunk_id,attempt_no) latest ON e.attempt_event_id=latest.event_id",
+                (task_id,),
+            ).fetchall():
+                prior_input += int(json.loads(event_row["event_json"]).get("input_bytes", 0))
+            if prior_input + input_bytes > V2_LIMITS.max_total_input_bytes:
+                raise ValueError("cumulative Worker input exceeds service limit")
             chunk = conn.execute(
                 "SELECT chunk_index,input_hash FROM chunks WHERE task_id=? AND chunk_id=?", (task_id, chunk_id)
             ).fetchone()
@@ -312,21 +325,82 @@ class ResearchStoreV2:
                 ).fetchone()
                 if (prior["input_hash"], prior["state_in_json"], prior["state_in_hash"]) != (input_hash, state_json, state_hash):
                     raise ValueError("retry must use identical chunk input and checkpoint")
+                prior_bytes = json.loads(conn.execute(
+                    "SELECT event_json FROM chunk_attempt_events WHERE task_id=? AND chunk_id=? AND attempt_no=? "
+                    "ORDER BY attempt_event_id LIMIT 1", (task_id, chunk_id, last["attempt_no"]),
+                ).fetchone()["event_json"]).get("input_bytes", 0)
+                if prior_bytes != input_bytes:
+                    raise ValueError("retry must use identical serialized input size")
             conn.execute("INSERT INTO chunk_attempts VALUES (?,?,?,?,?,?,?)",
                          (task_id, chunk_id, attempt_no, input_hash, state_json, state_hash, _now()))
             conn.execute("INSERT INTO chunk_attempt_events(task_id,chunk_id,attempt_no,status,event_json,created_at) VALUES (?,?,?,?,?,?)",
-                         (task_id, chunk_id, attempt_no, "RUNNING", "{}", _now()))
+                         (task_id, chunk_id, attempt_no, "RUNNING", _canonical({"input_bytes": input_bytes}), _now()))
         return attempt_no
 
+    def recover_interrupted_attempts(self, task_id: str) -> int:
+        """Close orphaned RUNNING attempts after process loss so they can be replayed."""
+        recovered = 0
+        with self._connect() as conn:
+            if self._latest_status(conn, task_id) != "RUNNING":
+                return 0
+            rows = conn.execute(
+                "SELECT a.chunk_id,a.attempt_no,a.started_at FROM chunk_attempts a "
+                "JOIN (SELECT chunk_id,MAX(attempt_no) attempt_no FROM chunk_attempts "
+                "WHERE task_id=? GROUP BY chunk_id) latest "
+                "ON a.chunk_id=latest.chunk_id AND a.attempt_no=latest.attempt_no "
+                "WHERE a.task_id=?", (task_id, task_id),
+            ).fetchall()
+            now = datetime.now(timezone.utc)
+            for row in rows:
+                if conn.execute(
+                    "SELECT 1 FROM chunk_commits WHERE task_id=? AND chunk_id=?",
+                    (task_id, row["chunk_id"]),
+                ).fetchone():
+                    continue
+                latest_event = conn.execute(
+                    "SELECT status FROM chunk_attempt_events WHERE task_id=? AND chunk_id=? AND attempt_no=? "
+                    "ORDER BY attempt_event_id DESC LIMIT 1",
+                    (task_id, row["chunk_id"], row["attempt_no"]),
+                ).fetchone()
+                if not latest_event or latest_event["status"] != "RUNNING":
+                    continue
+                started = datetime.fromisoformat(row["started_at"])
+                elapsed = max(0.0, (now - started).total_seconds())
+                initial = conn.execute(
+                    "SELECT event_json FROM chunk_attempt_events WHERE task_id=? AND chunk_id=? AND attempt_no=? "
+                    "ORDER BY attempt_event_id LIMIT 1",
+                    (task_id, row["chunk_id"], row["attempt_no"]),
+                ).fetchone()
+                input_bytes = json.loads(initial["event_json"]).get("input_bytes", 0)
+                event = _canonical({"category": "interrupted", "elapsed_seconds": elapsed,
+                                    "input_bytes": input_bytes})
+                conn.execute(
+                    "INSERT INTO chunk_attempt_events(task_id,chunk_id,attempt_no,status,event_json,created_at) "
+                    "VALUES (?,?,?,?,?,?)",
+                    (task_id, row["chunk_id"], row["attempt_no"], "RETRYABLE_FAILURE", event, _now()),
+                )
+                self._append_task_event(conn, task_id, "RETRYABLE_FAILURE", {
+                    "chunk_id": row["chunk_id"], "attempt": row["attempt_no"], "category": "interrupted",
+                })
+                recovered += 1
+        return recovered
+
     def record_chunk_failure(self, task_id: str, chunk_id: str, attempt_no: int, *, retryable: bool,
-                             diagnostics: dict | None = None) -> str:
-        payload = _canonical(diagnostics or {})
-        if len(payload.encode("utf-8")) > 4096:
-            raise ValueError("chunk diagnostics exceed byte limit")
+                             diagnostics: dict | None = None, elapsed_seconds: float = 0,
+                             blocked: bool = False) -> str:
+        if not isinstance(elapsed_seconds, (int, float)) or elapsed_seconds < 0:
+            raise ValueError("elapsed Worker time must be a non-negative number")
+        payload_obj = dict(diagnostics or {})
+        payload_obj["elapsed_seconds"] = float(elapsed_seconds)
+        payload = _canonical(payload_obj)
         with self._connect() as conn:
             attempt = conn.execute(
-                "SELECT 1 FROM chunk_attempts WHERE task_id=? AND chunk_id=? AND attempt_no=?",
+                "SELECT input_hash FROM chunk_attempts WHERE task_id=? AND chunk_id=? AND attempt_no=?",
                 (task_id, chunk_id, attempt_no),
+            ).fetchone()
+            started_event = conn.execute(
+                "SELECT event_json FROM chunk_attempt_events WHERE task_id=? AND chunk_id=? AND attempt_no=? "
+                "ORDER BY attempt_event_id LIMIT 1", (task_id, chunk_id, attempt_no),
             ).fetchone()
             latest = conn.execute(
                 "SELECT status FROM chunk_attempt_events WHERE task_id=? AND chunk_id=? AND attempt_no=? ORDER BY attempt_event_id DESC LIMIT 1",
@@ -334,14 +408,22 @@ class ResearchStoreV2:
             ).fetchone()
             if not attempt or not latest or latest["status"] != "RUNNING":
                 raise ValueError("only a running chunk attempt may fail")
-            status = "RETRYABLE_FAILURE" if retryable and attempt_no < V2_LIMITS.max_attempts_per_chunk else "FAILED"
+            payload_obj["input_bytes"] = json.loads(started_event["event_json"]).get("input_bytes", 0)
+            payload = _canonical(payload_obj)
+            if len(payload.encode("utf-8")) > 4096:
+                raise ValueError("chunk diagnostics exceed byte limit")
+            status = ("EXECUTION_BLOCKED" if blocked else
+                      "RETRYABLE_FAILURE" if retryable and attempt_no < V2_LIMITS.max_attempts_per_chunk else "FAILED")
             conn.execute("INSERT INTO chunk_attempt_events(task_id,chunk_id,attempt_no,status,event_json,created_at) VALUES (?,?,?,?,?,?)",
                          (task_id, chunk_id, attempt_no, status, payload, _now()))
-            self._append_task_event(conn, task_id, status, {"chunk_id": chunk_id, "attempt": attempt_no})
+            task_status = "EXECUTION_BLOCKED" if blocked else status
+            self._append_task_event(conn, task_id, task_status, {"chunk_id": chunk_id, "attempt": attempt_no})
         return status
 
     def commit_chunk(self, task_id: str, chunk_id: str, attempt_no: int, *, output: list,
-                     state_out: dict | None) -> str:
+                     state_out: dict | None, elapsed_seconds: float = 0) -> str:
+        if not isinstance(elapsed_seconds, (int, float)) or elapsed_seconds < 0:
+            raise ValueError("elapsed Worker time must be a non-negative number")
         output_json = _canonical(output)
         output_bytes = len(output_json.encode("utf-8"))
         if output_bytes > V2_LIMITS.max_output_bytes_per_chunk:
@@ -370,20 +452,28 @@ class ResearchStoreV2:
             if not attempt or not latest or latest["status"] != "RUNNING":
                 raise ValueError("chunk commit requires the active attempt")
             task = conn.execute("SELECT request_json FROM tasks WHERE task_id=?", (task_id,)).fetchone()
-            stateful = json.loads(task["request_json"]).get("execution_mode") == "stateful"
+            stored_request = json.loads(task["request_json"])
+            factor_request = stored_request.get("factor_request", stored_request)
+            stateful = factor_request.get("execution_mode") == "stateful"
             if stateful != (state_out is not None):
                 raise ValueError("chunk state output does not match execution mode")
             total_output = conn.execute(
-                "SELECT COALESCE(SUM(length(output_json)),0) AS total FROM chunk_commits WHERE task_id=?", (task_id,)
+                "SELECT COALESCE(SUM(length(output_json)+length(COALESCE(state_out_json,''))),0) AS total "
+                "FROM chunk_commits WHERE task_id=?", (task_id,)
             ).fetchone()["total"]
-            if total_output + output_bytes > V2_LIMITS.max_total_output_bytes:
+            if total_output + output_bytes + len(state_json.encode("utf-8") if state_json is not None else b"") > V2_LIMITS.max_total_output_bytes:
                 raise ValueError("cumulative task output exceeds byte limit")
             output_hash = hashlib.sha256(output_json.encode("utf-8")).hexdigest()
             conn.execute("INSERT INTO chunk_commits VALUES (?,?,?,?,?,?,?,?)", (
                 task_id, chunk_id, attempt_no, output_json, output_hash, state_json, state_hash, _now(),
             ))
             event = _canonical({"output_hash": output_hash, "state_in_hash": attempt["state_in_hash"],
-                                "state_out_hash": state_hash})
+                                "state_out_hash": state_hash, "elapsed_seconds": float(elapsed_seconds),
+                                "input_bytes": json.loads(conn.execute(
+                                    "SELECT event_json FROM chunk_attempt_events WHERE task_id=? AND chunk_id=? "
+                                    "AND attempt_no=? ORDER BY attempt_event_id LIMIT 1",
+                                    (task_id, chunk_id, attempt_no),
+                                ).fetchone()["event_json"]).get("input_bytes", 0)})
             conn.execute("INSERT INTO chunk_attempt_events(task_id,chunk_id,attempt_no,status,event_json,created_at) VALUES (?,?,?,?,?,?)",
                          (task_id, chunk_id, attempt_no, "COMMITTED", event, _now()))
             self._append_task_event(conn, task_id, "RUNNING", {"chunk_id": chunk_id, "status": "COMMITTED"})
@@ -432,6 +522,14 @@ class ResearchStoreV2:
             "state_out_hash": commit["state_out_hash"] if commit else None,
         }
 
+    def get_chunks(self, task_id: str) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT chunk_id,chunk_index,plan_hash,input_hash FROM chunks WHERE task_id=? ORDER BY chunk_index",
+                (task_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def get_committed_output(self, task_id: str, chunk_id: str) -> list:
         with self._connect() as conn:
             row = conn.execute("SELECT output_json FROM chunk_commits WHERE task_id=? AND chunk_id=?", (task_id, chunk_id)).fetchone()
@@ -446,6 +544,24 @@ class ResearchStoreV2:
                 return None
             status = self._latest_status(conn, task_id)
         return {**dict(task), "status": status}
+
+    def get_total_worker_wall_seconds(self, task_id: str) -> float:
+        with self._connect() as conn:
+            events = conn.execute(
+                "SELECT event_json FROM chunk_attempt_events WHERE task_id=? AND status IN "
+                "('COMMITTED','RETRYABLE_FAILURE','FAILED','EXECUTION_BLOCKED')", (task_id,)
+            ).fetchall()
+        return sum(float(json.loads(row["event_json"]).get("elapsed_seconds", 0)) for row in events)
+
+    def get_total_worker_input_bytes(self, task_id: str) -> int:
+        with self._connect() as conn:
+            events = conn.execute(
+                "SELECT e.event_json FROM chunk_attempt_events e JOIN ("
+                "SELECT chunk_id,attempt_no,MAX(attempt_event_id) event_id FROM chunk_attempt_events "
+                "WHERE task_id=? GROUP BY chunk_id,attempt_no) latest ON e.attempt_event_id=latest.event_id",
+                (task_id,),
+            ).fetchall()
+        return sum(int(json.loads(row["event_json"]).get("input_bytes", 0)) for row in events)
 
     def get_task_record(self, task_id: str) -> dict | None:
         with self._connect() as conn:

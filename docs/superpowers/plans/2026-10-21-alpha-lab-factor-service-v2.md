@@ -138,11 +138,11 @@
 - Scheduler executes chunks in order, retries only failed/incomplete chunks up to 3 attempts, resumes state from the last committed checkpoint, and never reruns committed chunks.
 - Evaluator adapter accepts only a complete, validated merged factor frame plus the trusted `AuthorizedFactorRunV2`; it returns descriptive report data and cannot receive worker state or partial output.
 
-- [ ] **Step 1: Write failing orchestration tests** for 3 attempts maximum, restart at each chunk boundary, state transition applied once, total wall/output limits, duplicate submissions, unavailable image/runtime -> `EXECUTION_BLOCKED`, and no Evidence on any partial failure.
-- [ ] **Step 2: Run** `pytest alpha_lab_service/tests/test_v2_recovery.py -q`; confirm orchestration class is absent.
-- [ ] **Step 3: Implement** the scheduler with persisted transitions around every Broker call and chunk commit. Enforce cumulative wall time (1,800 seconds) and output bytes (256 MiB); evaluate only after the full merge.
-- [ ] **Step 4: Add failure injection** around Worker return, checkpoint write, evaluator return, and Evidence transaction; run recovery and existing evaluator tests.
-- [ ] **Step 5: Commit** as `feat(alpha-lab): resume factor v2 tasks by committed chunk`.
+- [x] **Step 1: Write failing orchestration tests** for 3 attempts maximum, restart at each chunk boundary, state transition applied once, total wall/output limits, duplicate submissions, unavailable image/runtime -> `EXECUTION_BLOCKED`, and no Evidence on any partial failure.
+- [x] **Step 2: Run** `pytest alpha_lab_service/tests/test_v2_recovery.py -q`; confirmed orchestration class was absent before implementation.
+- [x] **Step 3: Implement** the scheduler with persisted transitions around every Broker call and chunk commit. Enforce cumulative wall time (1,800 seconds) and output bytes (256 MiB); evaluate only after the full merge.
+- [x] **Step 4: Add failure injection** around Worker return, checkpoint write, evaluator return, and Evidence transaction; run recovery and existing evaluator tests.
+- [x] **Step 5: Commit** as `feat(alpha-lab): resume factor v2 tasks by committed chunk`.
 
 ### Task 7: Additive MCP route, trusted factory wiring, and compatibility proof
 
