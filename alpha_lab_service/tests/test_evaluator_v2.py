@@ -58,6 +58,7 @@ def test_time_series_evaluator_reports_ic_rank_ic_monthly_yearly_and_coverage():
     assert metrics["coverage"]["valid_rows"] == 8
     assert len(metrics["monthly"]) == 8
     assert len(metrics["yearly"]) == 1
+    assert set(metrics["monthly"]["2025-01"]) == {"ic", "rank_ic"}
     assert "per_time" not in metrics
     assert result["formal_inference_status"] == "BLOCKED"
 
@@ -99,3 +100,13 @@ def test_cost_diagnostic_records_assumptions_and_turnover():
     assert diagnostic["turnover"] is not None
     assert "executable PnL" in diagnostic["interpretation"]
     assert not ({"p_value", "confidence_interval", "bootstrap", "hac", "mde"} & set(result["metrics"]))
+
+
+def test_low_valid_coverage_is_not_evaluable():
+    timestamps = pd.date_range("2025-01-01", periods=8, freq="D", tz="UTC")
+    run = _evaluation_run("time_series", timestamps, ["BTCUSDT"])
+    index = pd.MultiIndex.from_tuples([(stamp, "BTCUSDT") for stamp in timestamps], names=["open_time", "symbol"])
+    factor = pd.Series([1.0, 2.0, 3.0, float("nan"), float("nan"), float("nan"), float("nan"), float("nan")], index=index)
+    result = evaluate_v2(factor, run, identity="low-coverage")
+    assert result["status"] == "NOT_EVALUABLE"
+    assert result["reason"] == "INSUFFICIENT_COVERAGE"

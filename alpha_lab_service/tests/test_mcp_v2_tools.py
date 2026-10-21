@@ -41,6 +41,9 @@ class V2Service:
     def get_task_v2(self, task_id):
         return {"task_id": task_id, "status": "RUNNING"}
 
+    def get_history_v2(self, limit=100):
+        return {"entries": [], "source_status": {}, "source_errors": {}}
+
 
 def test_mcp_adds_exact_v2_tool_schemas_and_preserves_v1_routes():
     v1_only, _ = create_mcp_server(V1Service(), bearer_token=TOKEN)
@@ -50,7 +53,7 @@ def test_mcp_adds_exact_v2_tool_schemas_and_preserves_v1_routes():
     server, _app = create_mcp_server(V1Service(), v2_service=V2Service(), bearer_token=TOKEN)
     tools = asyncio.run(server.list_tools())
     by_name = {tool.name: tool for tool in tools}
-    assert set(by_name) == names_before | {"submit_factor_v2", "run_factor_v2", "get_task_v2"}
+    assert set(by_name) == names_before | {"submit_factor_v2", "run_factor_v2", "get_task_v2", "get_history_v2"}
     submit_schema = by_name["submit_factor_v2"].inputSchema
     assert set(submit_schema["properties"]) == {"request"}
     assert submit_schema["required"] == ["request"]
@@ -58,6 +61,7 @@ def test_mcp_adds_exact_v2_tool_schemas_and_preserves_v1_routes():
         schema = by_name[name].inputSchema
         assert set(schema["properties"]) == {"task_id"}
         assert schema["required"] == ["task_id"]
+    assert set(by_name["get_history_v2"].inputSchema["properties"]) == {"limit"}
 
 
 def test_service_bundle_rejects_partial_v2_dependencies_and_caller_control_fields():
@@ -94,13 +98,39 @@ def test_trusted_bundle_wires_complete_v2_service(tmp_path):
     assert bundle.v2_service is not None
     assert {tool.name for tool in asyncio.run(create_mcp_server(
         bundle, bearer_token=TOKEN
-    )[0].list_tools())} >= {"submit_factor_v2", "run_factor_v2", "get_task_v2"}
+    )[0].list_tools())} >= {"submit_factor_v2", "run_factor_v2", "get_task_v2", "get_history_v2"}
+
+
+def test_trusted_bundle_wires_all_history_sources_without_agent_selection(tmp_path):
+    class LegacyHistory:
+        def list_runs(self, limit=100):
+            return [{"run_id": "legacy-1", "started_at": "2025-01-01T00:00:00Z", "status": "completed"}]
+
+    class ServiceHistory:
+        def list_history(self, limit=100):
+            return [{"kind": "TASK", "identity": "service-1", "payload": {}}]
+
+    v2_store = ResearchStoreV2(tmp_path / "v2" / "store.sqlite3", protected_paths=())
+    bundle = build_service_bundle(V1Service(), v2_dependencies={
+        "store": v2_store, "broker": type("Broker", (), {"run_chunk": lambda *_: []})(),
+        "research_request_registry": MappingResearchRequestRegistryV1({"example-request-001": research_request()}),
+        "policy_registry": FileCampaignPolicyRegistry(), "dataset_builder": FakeDatasetBuilder(),
+        "dataset_options": DatasetBuildOptionsV1("preserve", "futures_ohlcv", {}, {}, {}),
+        "worker_identity": "sha256:" + "a" * 64, "evaluator_identity": "evaluator-v1",
+        "history_stores": {"legacy": LegacyHistory(), "python-factor-v1": ServiceHistory(),
+                            "python-factor-v2": v2_store},
+    })
+    history = bundle.v2_service.get_history_v2()
+    assert set(history["source_status"].values()) == {"AVAILABLE"}
+    assert {row["store_id"] for row in history["entries"]} == {
+        "legacy-research", "alpha-lab-python-factor-store-v1",
+    }
 
 
 def test_mcp_does_not_accept_trusted_runtime_selection_fields():
     server, _ = create_mcp_server(V1Service(), v2_service=V2Service(), bearer_token=TOKEN)
     tools = {tool.name: tool for tool in asyncio.run(server.list_tools())}
-    for name in ("submit_factor_v2", "run_factor_v2", "get_task_v2"):
+    for name in ("submit_factor_v2", "run_factor_v2", "get_task_v2", "get_history_v2"):
         schema = tools[name].inputSchema
         assert "store" not in schema["properties"]
         assert "worker_identity" not in schema["properties"]

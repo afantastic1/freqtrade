@@ -21,7 +21,8 @@ class ResearchServiceV2:
 
     def __init__(self, store, broker, *, research_request_registry, policy_registry,
                  dataset_builder, dataset_options, worker_identity: str,
-                 evaluator_identity: str, universe=None, max_steps_per_chunk: int = 512):
+                 evaluator_identity: str, universe=None, max_steps_per_chunk: int = 512,
+                 history_stores=None):
         self.store = store
         self.broker = broker
         self.research_request_registry = research_request_registry
@@ -30,6 +31,9 @@ class ResearchServiceV2:
         self.dataset_options = dataset_options
         self.worker_identity = worker_identity
         self.evaluator_identity = evaluator_identity
+        from alpha_lab_service.history_v2 import UnifiedResearchHistory
+
+        self.history = UnifiedResearchHistory(history_stores or {"python-factor-v2": store})
         self.universe = universe
         self.max_steps_per_chunk = max_steps_per_chunk
         self._run_lock = asyncio.Lock()
@@ -165,7 +169,8 @@ class ResearchServiceV2:
                     [(stamp, symbol) for stamp, symbol, _ in rows], names=["open_time", "symbol"]
                 )
                 factor = pd.Series([value for _, _, value in rows], index=index, dtype=float)
-                if len(factor) != plan.total_steps or not factor.index.is_unique:
+                expected_rows = plan.total_steps * len(run.research_request.symbols)
+                if len(factor) != expected_rows or not factor.index.is_unique:
                     raise ValueError("merged Worker output is incomplete or duplicated")
                 report = evaluate_authorized_factor_output(factor, run, identity=run_id)
                 evidence = {
@@ -189,7 +194,7 @@ class ResearchServiceV2:
                     "dataset_manifest_sha256": run.canonical_request_record["dataset_manifest_sha256"],
                     "dataset_fingerprint": run.canonical_request_record["dataset_fingerprint"],
                     "dataset_source_provenance": run.dataset.manifest.get("sources", run.dataset.manifest),
-                    "worker_image": run.worker_image_digest,
+                    "worker_image_digest": run.worker_image_digest,
                     "evaluator_identity": run.evaluator_identity,
                     "evaluator_version": run.evaluator_identity,
                     "output_hashes": output_hashes,
@@ -211,3 +216,6 @@ class ResearchServiceV2:
 
     def get_task_v2(self, task_id: str) -> dict | None:
         return self.store.get_task(task_id)
+
+    def get_history_v2(self, limit: int = 100) -> dict:
+        return self.history.list_history(limit)

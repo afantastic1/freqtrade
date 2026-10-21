@@ -234,6 +234,10 @@ def run_acceptance(archive: Path, checksum_file: Path, output_dir: Path, *, imag
     resumed_evidence = resumed["service"].store.get_evidence(resumed["request_hash"])["evidence"]
     sequential_evidence = sequential["service"].store.get_evidence(sequential["request_hash"])["evidence"]
     stateless_evidence = stateless["service"].store.get_evidence(stateless["request_hash"])["evidence"]
+    if resumed_evidence["report"]["mode"] != "time_series":
+        raise AssertionError("single-symbol Vision acceptance must use the time-series evaluator")
+    if resumed_evidence["report"]["formal_inference_status"] != "BLOCKED":
+        raise AssertionError("formal inference must remain blocked")
     resumed_chunks = resumed["service"].store.get_chunks(resumed["task_id"])
     sequential_chunks = sequential["service"].store.get_chunks(sequential["task_id"])
     resumed_state_hashes = [resumed["service"].store.get_chunk(resumed["task_id"], c["chunk_id"])["state_out_hash"] for c in resumed_chunks]
@@ -248,6 +252,9 @@ def run_acceptance(archive: Path, checksum_file: Path, output_dir: Path, *, imag
 
     report = {
         "status": "PASS", "protocol_version": "2.0", "formal_inference_status": "BLOCKED",
+        "research_mode": resumed_evidence["report"]["mode"],
+        "descriptive_status": resumed_evidence["report"]["status"],
+        "descriptive_metrics": resumed_evidence["report"]["metrics"],
         "archive_url": ARCHIVE_URL, "archive_sha256": archive_sha256,
         "registered_dataset_id": prepared["registered"]["manifest"]["dataset_id"],
         "registered_manifest_sha256": prepared["registered"]["manifest_sha256"],

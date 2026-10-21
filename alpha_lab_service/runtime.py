@@ -19,6 +19,7 @@ _V2_DEPENDENCIES = {
     "store", "broker", "research_request_registry", "policy_registry",
     "dataset_builder", "dataset_options", "worker_identity", "evaluator_identity",
 }
+_V2_OPTIONAL_DEPENDENCIES = {"history_stores"}
 
 
 def build_service_bundle(v1_service, *, v2_dependencies=None) -> ServiceBundle:
@@ -30,13 +31,25 @@ def build_service_bundle(v1_service, *, v2_dependencies=None) -> ServiceBundle:
         return ServiceBundle(v1_service, None)
     if not isinstance(v2_dependencies, dict):
         raise ValueError("complete trusted v2 dependency set is required")
-    unknown = set(v2_dependencies) - (_V2_DEPENDENCIES | {"universe"})
+    unknown = set(v2_dependencies) - (_V2_DEPENDENCIES | _V2_OPTIONAL_DEPENDENCIES | {"universe"})
     if unknown:
         raise ValueError(f"unsupported v2 dependency: {sorted(unknown)[0]}")
     missing = _V2_DEPENDENCIES - set(v2_dependencies)
     if missing or any(v2_dependencies.get(name) is None for name in _V2_DEPENDENCIES):
         raise ValueError("complete trusted v2 dependency set is required")
     deps = dict(v2_dependencies)
+    history_stores = deps.get("history_stores")
+    if history_stores is None:
+        history_stores = {"python-factor-v2": deps["store"]}
+        v1_store = getattr(v1_service, "store", None)
+        if callable(getattr(v1_store, "list_history", None)):
+            history_stores["python-factor-v1"] = v1_store
+        legacy_store = getattr(v1_service, "legacy_research_store", None)
+        if callable(getattr(legacy_store, "list_runs", None)):
+            history_stores["legacy"] = legacy_store
+    if not isinstance(history_stores, dict):
+        raise ValueError("trusted history stores must be a mapping")
+    deps["history_stores"] = history_stores
     worker_identity = deps["worker_identity"]
     if not isinstance(worker_identity, str) or not re.fullmatch(
         r"(?:sha256:[0-9a-f]{64}|.+@sha256:[0-9a-f]{64})", worker_identity

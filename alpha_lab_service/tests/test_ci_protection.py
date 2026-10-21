@@ -28,6 +28,7 @@ def test_ci_triggers_and_checks_all_service_security_boundaries():
         ".github/workflows/alpha-lab-python-service.yml", "alpha_lab/freeze-manifest-v1.3.json",
         "alpha_lab_service/protocol-manifest-v2.json", "alpha_lab_contracts/**",
         "docs/alpha_lab/python-factor-*.md",
+        "docs/alpha_lab/unified-descriptive-evidence-acceptance.*",
     ):
         assert path in text
     assert "test_worker_container.py" in text
@@ -41,6 +42,8 @@ def test_new_service_manifest_covers_its_verifier_worker_and_admission_gate():
     expected = {
         "alpha_lab_service/manifest.py",
         "alpha_lab_service/governance.py",
+        "alpha_lab_service/evaluation_v2.py",
+        "alpha_lab_service/history_v2.py",
         "containers/alpha-lab-factor-worker/worker.py",
         "scripts/alpha_lab_admission_gate.py",
         "docs/alpha_lab/python-factor-execution-protocol-v1.md",
@@ -50,6 +53,7 @@ def test_new_service_manifest_covers_its_verifier_worker_and_admission_gate():
     import json
     files = json.loads(manifest.read_text(encoding="utf-8"))["files"]
     assert expected <= set(files)
+    assert "docs/alpha_lab/unified-descriptive-evidence-acceptance.md" in files
 
 
 def test_v12_governance_keeps_every_v11_frozen_core_hash_valid():

@@ -5,6 +5,9 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+MIN_VALID_COVERAGE = 0.8
+MIN_VALID_CROSS_SECTIONS = 2
+
 
 def _labels(run, expected: pd.MultiIndex) -> pd.Series:
     frame = run.dataset.evaluator_labels.frame.copy()
@@ -46,20 +49,21 @@ def _correlation(group: pd.DataFrame) -> tuple[float | None, float | None]:
     return float(group.factor.corr(group.label)), float(group.factor.corr(group.label, method="spearman"))
 
 
-def _periodic_ic(valid: pd.DataFrame, period: str) -> dict[str, float | None]:
+def _periodic_ic(valid: pd.DataFrame, period: str) -> dict[str, dict[str, float | None]]:
     if valid.empty:
         return {}
     keys = valid.open_time.dt.strftime(period)
     result = {}
     for key, group in valid.groupby(keys, sort=True):
-        _, rank_ic = _correlation(group)
-        result[str(key)] = rank_ic
+        ic, rank_ic = _correlation(group)
+        result[str(key)] = {"ic": ic, "rank_ic": rank_ic}
     return result
 
 
 def _coverage(total: int, valid: pd.DataFrame, n_timestamps: int) -> dict:
     n = len(valid)
     return {
+        "minimum_required_coverage_rate": MIN_VALID_COVERAGE,
         "requested_rows": total,
         "valid_rows": n,
         "missing_rows": total - n,
@@ -73,6 +77,8 @@ def _time_series_metrics(valid: pd.DataFrame, total: int, n_timestamps: int) -> 
     coverage = _coverage(total, valid, n_timestamps)
     if len(valid) < 3:
         return "NOT_EVALUABLE", "INSUFFICIENT_VALID_OBSERVATIONS", {"coverage": coverage}
+    if coverage["coverage_rate"] < MIN_VALID_COVERAGE:
+        return "NOT_EVALUABLE", "INSUFFICIENT_COVERAGE", {"coverage": coverage}
     ic, rank_ic = _correlation(valid)
     if ic is None:
         return "NOT_EVALUABLE", "CONSTANT_FACTOR_OR_LABEL", {"coverage": coverage}
@@ -104,6 +110,8 @@ def _time_series_metrics(valid: pd.DataFrame, total: int, n_timestamps: int) -> 
 
 def _cross_sectional_metrics(valid: pd.DataFrame, total: int, n_timestamps: int) -> tuple[str, str | None, dict]:
     coverage = _coverage(total, valid, n_timestamps)
+    if coverage["coverage_rate"] < MIN_VALID_COVERAGE:
+        return "NOT_EVALUABLE", "INSUFFICIENT_COVERAGE", {"coverage": coverage}
     per_time = []
     quantile_rows = []
     previous: tuple[set[str], set[str]] | None = None
@@ -134,6 +142,10 @@ def _cross_sectional_metrics(valid: pd.DataFrame, total: int, n_timestamps: int)
                          "asset_count": int(len(group))})
     if not per_time:
         return "NOT_EVALUABLE", "NO_VALID_CROSS_SECTIONS", {"coverage": coverage, "asset_count": {"min": 0, "median": 0, "max": 0}}
+    if len(per_time) < MIN_VALID_CROSS_SECTIONS:
+        return "NOT_EVALUABLE", "INSUFFICIENT_VALID_CROSS_SECTIONS", {
+            "coverage": coverage, "effective_cross_sections": len(per_time),
+        }
     monthly = {}
     yearly = {}
     section_frame = pd.DataFrame(per_time)

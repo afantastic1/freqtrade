@@ -1,4 +1,5 @@
 import asyncio
+from dataclasses import replace
 
 import pytest
 
@@ -8,6 +9,72 @@ from alpha_lab_service.authorization_v2 import MappingResearchRequestRegistryV1
 from alpha_lab_service.jobs_v2 import ResearchServiceV2
 from alpha_lab_service.store_v2 import ResearchStoreV2
 from alpha_lab_service.tests.test_v2_authorization import FakeDatasetBuilder, request_payload, research_request
+
+
+def test_cross_sectional_v2_service_emits_cs_report(tmp_path):
+    import pandas as pd
+    from alpha_lab.data.build_products import DatasetBuildReportV1, DatasetBuildResultV2, EvaluatorLabelsV1, WorkerInputV2
+    from alpha_lab_service.authorization_v2 import MappingResearchRequestRegistryV1
+
+    symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"]
+    policy = FileCampaignPolicyRegistry().get(
+        "example_campaign", "1", "041efb79ddf9b88a71ff071cbfb52f833420658ff888cf6b6d87bb5f0a7ef209"
+    )
+    changed_policy = replace(policy, symbols=tuple(symbols), policy_sha256="")
+    changed_policy = replace(changed_policy, policy_sha256=changed_policy.sha256())
+
+    class PolicyRegistry:
+        def get(self, campaign_id, version, digest):
+            assert (campaign_id, version, digest) == (
+                changed_policy.campaign_id, changed_policy.policy_version, changed_policy.sha256()
+            )
+            return changed_policy
+
+    raw_request = research_request() | {
+        "request_id": "cs-service-test", "campaign_policy_sha256": changed_policy.sha256(),
+        "symbols": symbols, "mode": "cross_sectional",
+    }
+    timestamps = pd.date_range("2025-06-01T00:05:00Z", periods=8, freq="5min", tz="UTC")
+
+    class DatasetBuilder:
+        def build(self, _request, *, options, universe=None):
+            rows = []
+            labels = []
+            for stamp in timestamps:
+                for rank, symbol in enumerate(symbols, 1):
+                    rows.append({"open_time": stamp - pd.Timedelta(minutes=5), "close_time": stamp,
+                                 "available_time": stamp, "decision_time": stamp, "open": 100.0,
+                                 "high": 102.0, "low": 99.0, "close": 101.0, "volume": 10.0,
+                                 "symbol": symbol})
+                    labels.append({"decision_time": stamp, "symbol": symbol, "label_value": float(rank)})
+            return DatasetBuildResultV2(
+                WorkerInputV2(pd.DataFrame(rows), ("available_time",)),
+                EvaluatorLabelsV1(pd.DataFrame(labels)), DatasetBuildReportV1(), {"source": "synthetic"},
+            )
+
+    class CrossSectionBroker:
+        async def run_chunk(self, _task, _chunk, frames):
+            init = frames[0]
+            output = [{"type": "ready", "protocol_version": "2.0"}]
+            output.extend({"type": "result", "plan_hash": init["plan_hash"], "as_of": frame["as_of"],
+                           "values": {symbol: float(rank) for rank, symbol in enumerate(symbols, 1)}}
+                          for frame in frames if frame["type"] == "step")
+            return output
+
+    options = DatasetBuildOptionsV1("preserve", "futures_ohlcv", {}, {}, {})
+    service_v2 = ResearchServiceV2(
+        ResearchStoreV2(tmp_path / "cs" / "db.sqlite3", protected_paths=()), CrossSectionBroker(),
+        research_request_registry=MappingResearchRequestRegistryV1({"cs-service-test": raw_request}),
+        policy_registry=PolicyRegistry(), dataset_builder=DatasetBuilder(), dataset_options=options,
+        worker_identity="sha256:" + "a" * 64, evaluator_identity="evaluator-v1", max_steps_per_chunk=8,
+    )
+    payload = request_payload() | {"research_request_id": "cs-service-test"}
+    submitted = service_v2.submit_factor_v2(payload)
+    result = asyncio.run(service_v2.run_factor_v2(submitted["task_id"]))
+    assert result["status"] == "EXPLORATORY", result
+    assert result["report"]["mode"] == "cross_sectional"
+    assert result["report"]["metrics"]["mean_cs_rank_ic"] == pytest.approx(1.0)
+    assert result["report"]["formal_inference_status"] == "BLOCKED"
 
 
 class FakeBroker:
@@ -84,6 +151,7 @@ def test_v2_evidence_binds_campaign_dataset_source_params_and_evaluator(tmp_path
     assert evidence["source_sha256"]
     assert evidence["params"] == {"window": 7}
     assert evidence["evaluator_version"] == "evaluator-v1"
+    assert evidence["worker_image_digest"] == "sha256:" + "a" * 64
     assert evidence["formal_inference_status"] == "BLOCKED"
     replay = asyncio.run(research.run_factor_v2(submitted["task_id"]))
     assert replay["evidence_hash"] == result["evidence_hash"]

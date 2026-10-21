@@ -18,7 +18,7 @@ def create_mcp_server(service, *, v2_service=None, bearer_token: str, host: str 
     elif v2_service is None:
         v2_service = getattr(service, "v2_service", None)
     if v2_service is not None and any(not callable(getattr(v2_service, name, None)) for name in (
-        "submit_factor_v2", "run_factor_v2", "get_task_v2",
+        "submit_factor_v2", "run_factor_v2", "get_task_v2", "get_history_v2",
     )):
         raise ValueError("trusted v2 service is incomplete")
     mcp = FastMCP(
@@ -72,6 +72,11 @@ def create_mcp_server(service, *, v2_service=None, bearer_token: str, host: str 
             """Read the sanitized status for a v2 task."""
             task = v2_service.get_task_v2(task_id)
             return task or {"status": "NOT_FOUND"}
+
+        @mcp.tool()
+        def get_history_v2(limit: int = 100) -> dict:
+            """Read normalized history from configured Alpha Lab Stores."""
+            return v2_service.get_history_v2(limit)
 
     app = BearerAuthMiddleware(mcp.streamable_http_app(), bearer_token)
     return mcp, app

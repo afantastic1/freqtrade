@@ -14,6 +14,7 @@ on:
       - "alpha_lab/freeze-manifest-v1.3.json"
       - "alpha_lab_service/protocol-manifest-v2.json"
       - "docs/alpha_lab/python-factor-*.md"
+      - "docs/alpha_lab/unified-descriptive-evidence-acceptance.*"
   pull_request:
     paths:
       - "alpha_lab_service/**"
@@ -26,6 +27,7 @@ on:
       - "alpha_lab/freeze-manifest-v1.3.json"
       - "alpha_lab_service/protocol-manifest-v2.json"
       - "docs/alpha_lab/python-factor-*.md"
+      - "docs/alpha_lab/unified-descriptive-evidence-acceptance.*"
 
 permissions:
   contents: read
