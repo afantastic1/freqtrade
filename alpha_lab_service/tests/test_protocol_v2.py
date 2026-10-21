@@ -60,11 +60,13 @@ def test_v2_identity_canonicalizes_material_inputs():
     kwargs = dict(
         research_request_sha256="a" * 64, campaign_policy_sha256="b" * 64,
         dataset_manifest_sha256="c" * 64, dataset_fingerprint="d" * 64,
+        worker_input_schema_sha256="f" * 64,
         worker_image_digest="sha256:" + "e" * 64, evaluator_identity="eval-v1",
     )
     first = canonical_request_hash_v2(request, **kwargs)
     assert first == canonical_request_hash_v2(request, **kwargs)
     assert first != canonical_request_hash_v2(request, **{**kwargs, "evaluator_identity": "eval-v2"})
+    assert first != canonical_request_hash_v2(request, **{**kwargs, "worker_input_schema_sha256": "0" * 64})
     assert len(first) == 64
 
 

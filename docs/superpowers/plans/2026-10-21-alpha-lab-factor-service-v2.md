@@ -58,9 +58,9 @@
 - Modify: `alpha_lab_service/protocol_v2.py`
 
 **Interfaces:**
-- Consumes `FactorRequestV2`, existing `ResearchRequestV2`, `CampaignPolicyRegistry`, `DatasetBuilderV2`, and Task 1 schema registry.
-- Produces `AuthorizedFactorRunV2` and `resolve_authorized_run(request, policy_registry, dataset_builder, worker_identity, evaluator_identity) -> AuthorizedFactorRunV2`.
-- `AuthorizedFactorRunV2` carries the trusted ResearchRequest, Campaign/policy identity, `DatasetBuildResultV2`, resolved schema, ordered evaluation timestamps, identity hash, and canonical request record. It is control-plane-only and never serialized wholesale to Worker.
+- Consumes `FactorRequestV2`, a trusted request-ID registry, existing `ResearchRequestV2`, `CampaignPolicyRegistry`, `DatasetBuilderV2`, server-owned `DatasetBuildOptionsV1`, and Task 1 schema registry.
+- Produces `AuthorizedFactorRunV2` and `resolve_authorized_run(request, research_request_registry, policy_registry, dataset_builder, dataset_options, worker_identity, evaluator_identity) -> AuthorizedFactorRunV2`.
+- `AuthorizedFactorRunV2` carries the trusted ResearchRequest, Campaign/policy identity, `DatasetBuildResultV2`, resolved schema, ordered evaluation timestamps derived from worker-safe `decision_time`, identity hash, and canonical request record. It is control-plane-only and never serialized wholesale to Worker.
 
 - [ ] **Step 1: Write failing tests** for valid registry resolution and rejection of caller-supplied symbols/time/split/source-adapter/data types/labels/paths/resource profile/authority fields; assert the builder receives only the resolved ResearchRequest.
 - [ ] **Step 2: Run** `pytest alpha_lab_service/tests/test_v2_authorization.py -q`; confirm authorization resolver is missing.

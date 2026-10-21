@@ -90,13 +90,15 @@ def canonical_request_hash_v2(
     campaign_policy_sha256: str,
     dataset_manifest_sha256: str,
     dataset_fingerprint: str,
+    worker_input_schema_sha256: str,
     worker_image_digest: str,
     evaluator_identity: str,
     protocol_version: str = V2_PROTOCOL_VERSION,
     limits_version: str = V2_LIMITS.version,
 ) -> str:
     """Hash declarations and trusted, immutable execution identity as canonical JSON."""
-    for value in (research_request_sha256, campaign_policy_sha256, dataset_manifest_sha256, dataset_fingerprint):
+    for value in (research_request_sha256, campaign_policy_sha256, dataset_manifest_sha256,
+                  dataset_fingerprint, worker_input_schema_sha256):
         if len(value) != 64 or any(char not in "0123456789abcdef" for char in value):
             raise ValueError("identity hashes must be lowercase SHA-256 values")
     payload = {
@@ -107,6 +109,7 @@ def canonical_request_hash_v2(
         "campaign_policy_sha256": campaign_policy_sha256,
         "dataset_manifest_sha256": dataset_manifest_sha256,
         "dataset_fingerprint": dataset_fingerprint,
+        "worker_input_schema_sha256": worker_input_schema_sha256,
         "worker_image_digest": worker_image_digest,
         "evaluator_identity": evaluator_identity,
     }
