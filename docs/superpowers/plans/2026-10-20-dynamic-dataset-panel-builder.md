@@ -83,7 +83,7 @@
 - Produces `build_temporal_plan(request: ResearchRequestV2, policy: CampaignPolicyV1) -> TemporalPlanV1`.
 - Produces `DatasetBuildOptionsV1(missing_data_policy: Literal['reject', 'preserve'], primary_data_type: str | None, source_snapshot_pins: Mapping[str, str], availability_rule_ids: Mapping[str, str], max_age_by_data_type: Mapping[str, int])`.
 - `primary_data_type` must identify one requested Spot/Futures OHLCV source; if omitted, the request must contain exactly one OHLCV type. Funding/OI-only requests fail because they do not define a market decision grid or forward-return labels.
-- `warmup_start = max(split.start, request.start - lookback_bars * step)`; the builder reads exactly those expected timeframe slots and does not extend earlier to compensate for gaps.
+- `warmup_start = max(split.start, request.start - (lookback_bars + 1) * step)`; the extra source slot supplies the first decision in the requested interval because OHLCV becomes available after bar close. The builder reports clipped lookback at split boundaries and does not extend earlier to compensate for gaps.
 - Label bounds include the bar at `label_horizon_bars` for the last study decision and may not exceed the selected split end.
 - Produces `partition_temporal_samples(labels: pd.DataFrame, *, train_end: pd.Timestamp, test_end: pd.Timestamp, timeframe: str, embargo_bars: int) -> tuple[pd.DataFrame, pd.DataFrame]` using label availability for training eligibility and an embargo offset for test start.
 
@@ -232,12 +232,12 @@
 - Acceptance report records exact HEAD, selected request/policy hashes, source manifest pins, actual versus synthetic evidence, commands, outputs, and every PR-04 checklist result.
 - No source dataset, historical Evidence/Decision, or v1.1 manifest is modified.
 
-- [x] **Step 1: Run synthetic boundary/PIT/security set**: 50 passed; includes point-in-time joins, split bounds, embargo, unauthorized sources, missing primary rejection, all four input types, and CLI acceptance policy.
+- [x] **Step 1: Run synthetic boundary/PIT/security set**: 68 passed; includes point-in-time joins, split bounds, embargo, unauthorized sources, missing primary rejection, all four input types, and CLI acceptance policy.
 - [x] **Step 2: Run compatibility and package regressions**: 115 passed.
 - [x] **Step 3: Run acceptance builds** for BTC 2026 5m, ETH/BTC 2025 1h, and the pinned five-asset 2022–2024 1h panel; exact results and source pins are in the acceptance report.
 - [x] **Step 4: Verify future perturbation, split boundaries, embargo, unauthorized-data rejection, and all four source types** from recorded test output and dataset fingerprints. Future perturbation is checked on as-of worker frames, not a downstream factor run.
-- [x] **Step 5: Run governance/freeze verification, `compileall`, and `git diff --check`; 478 passed and 10 service tests require unavailable immutable worker image configuration.**
-- [ ] **Step 6: Commit** the acceptance report and completed plan as `docs(data): record dynamic dataset builder acceptance`.
+- [x] **Step 5: Run governance/freeze verification, `compileall`, and `git diff --check`; 496 passed and 10 service tests require unavailable immutable worker image configuration.**
+- [x] **Step 6: Commit** the acceptance report and completed plan as `docs(data): record dynamic dataset builder acceptance`.
 
 ## Plan Self-Review
 
