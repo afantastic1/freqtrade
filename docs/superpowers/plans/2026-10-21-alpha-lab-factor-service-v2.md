@@ -1,6 +1,6 @@
 # Alpha Lab Python Factor Service v2 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Add a recoverable, typed-input Python factor execution service for authorized ResearchRequest v2 windows while preserving v1 behavior.
 
@@ -44,11 +44,11 @@
 - `V2_LIMITS` is immutable server configuration `factor-service-v2-limits-v1`: 512 evaluation steps/chunk, 100,000 total evaluation steps, 16 MiB serialized input/chunk, 512 MiB cumulative serialized input, 4 MiB output/chunk, 256 MiB cumulative output, 1 MiB canonical state, 1,800 cumulative Worker wall seconds, and 3 attempts/chunk. No limit is request-controlled.
 - Schema registry initially exposes only the PR-04 worker-safe OHLCV, Spot/Futures, Funding, and Open Interest columns that the trusted DatasetBuilder actually provides; each entry records logical type, units, source data type, availability rule, null policy, and shape.
 
-- [ ] **Step 1: Write failing model and registry tests** for strict extra-field rejection, UTF-8 source byte bound, scalar finite parameters, valid mode/state schema pairing, limit immutability, unknown fields, and canonical nullable numeric serialization.
-- [ ] **Step 2: Run** `pytest alpha_lab_service/tests/test_protocol_v2.py alpha_lab_service/tests/test_v2_inputs.py -q`; confirm the new v2 symbols are absent.
-- [ ] **Step 3: Implement** the frozen Pydantic request and registered typed schema models in the two new modules. Use a 256 KiB source cap to match v1 and canonical sorted compact JSON with `allow_nan=False`.
-- [ ] **Step 4: Add tests** proving v1 `FactorRequest` validation and v1 canonical hash remain unchanged; run the new tests plus `alpha_lab_service/tests/test_protocol.py`.
-- [ ] **Step 5: Commit** as `feat(alpha-lab): define factor service v2 contracts`.
+- [x] **Step 1: Write failing model and registry tests** for strict extra-field rejection, UTF-8 source byte bound, scalar finite parameters, valid mode/state schema pairing, limit immutability, unknown fields, and canonical nullable numeric serialization.
+- [x] **Step 2: Run** `pytest alpha_lab_service/tests/test_protocol_v2.py alpha_lab_service/tests/test_v2_inputs.py -q`; confirm the new v2 symbols are absent.
+- [x] **Step 3: Implement** the frozen Pydantic request and registered typed schema models in the two new modules. Use a 256 KiB source cap to match v1 and canonical sorted compact JSON with `allow_nan=False`.
+- [x] **Step 4: Add tests** proving v1 `FactorRequest` validation and v1 canonical hash remain unchanged; run the new tests plus `alpha_lab_service/tests/test_protocol.py`.
+- [x] **Step 5: Commit** as `feat(alpha-lab): define factor service v2 contracts`.
 
 ### Task 2: Trusted ResearchRequest resolution and complete v2 identity
 
@@ -62,11 +62,11 @@
 - Produces `AuthorizedFactorRunV2` and `resolve_authorized_run(request, research_request_registry, policy_registry, dataset_builder, dataset_options, worker_identity, evaluator_identity) -> AuthorizedFactorRunV2`.
 - `AuthorizedFactorRunV2` carries the trusted ResearchRequest, Campaign/policy identity, `DatasetBuildResultV2`, resolved schema, ordered evaluation timestamps derived from worker-safe `decision_time`, identity hash, and canonical request record. It is control-plane-only and never serialized wholesale to Worker.
 
-- [ ] **Step 1: Write failing tests** for valid registry resolution and rejection of caller-supplied symbols/time/split/source-adapter/data types/labels/paths/resource profile/authority fields; assert the builder receives only the resolved ResearchRequest.
-- [ ] **Step 2: Run** `pytest alpha_lab_service/tests/test_v2_authorization.py -q`; confirm authorization resolver is missing.
-- [ ] **Step 3: Implement** exact allowlisted `FactorRequestV2` parsing and trusted resolution. Hash canonical source, scalar params, ResearchRequest and Campaign policy identity, DatasetBuilder manifest/fingerprint, schema ID/version, execution/state contracts, immutable image digest, evaluator identity, limits version, and protocol version.
-- [ ] **Step 4: Add identity tests** showing identical inputs return identical identity and changing each material identity component changes it; run the test module and existing ResearchRequest/Campaign policy tests.
-- [ ] **Step 5: Commit** as `feat(alpha-lab): bind factor v2 to trusted campaigns`.
+- [x] **Step 1: Write failing tests** for valid registry resolution and rejection of caller-supplied symbols/time/split/source-adapter/data types/labels/paths/resource profile/authority fields; assert the builder receives only the resolved ResearchRequest.
+- [x] **Step 2: Run** `pytest alpha_lab_service/tests/test_v2_authorization.py -q`; confirm authorization resolver is missing.
+- [x] **Step 3: Implement** exact allowlisted `FactorRequestV2` parsing and trusted resolution. Hash canonical source, scalar params, ResearchRequest and Campaign policy identity, DatasetBuilder manifest/fingerprint, schema ID/version, execution/state contracts, immutable image digest, evaluator identity, limits version, and protocol version.
+- [x] **Step 4: Add identity tests** showing identical inputs return identical identity and changing each material identity component changes it; run the test module and existing ResearchRequest/Campaign policy tests.
+- [x] **Step 5: Commit** as `feat(alpha-lab): bind factor v2 to trusted campaigns`.
 
 ### Task 3: Bounded chunk plan and point-in-time frame construction
 
@@ -81,11 +81,11 @@
 - Each chunk has at most 512 evaluation timestamps. Boundaries, warmup requirements, plan hash, chunk IDs, and expected timestamps are deterministic from the full run identity and server limit version.
 - Every as-of frame comes only from `WorkerInputV2.asof(timestamp)`, uses the registered schema, and is canonical/size-checked. Warmup is marked separately from evaluation and cannot emit scored output.
 
-- [ ] **Step 1: Write failing tests** for an 8,928-step month producing deterministic non-overlapping chunks, a 512/513 boundary, causal warmup, null preservation, input byte caps, labels/future-row exclusion, and malformed/missing/duplicate/reordered/extra output.
-- [ ] **Step 2: Run** `pytest alpha_lab_service/tests/test_v2_chunks.py -q`; confirm planner and frame builder are absent.
-- [ ] **Step 3: Implement** deterministic partitioning, typed schema serialization, per-as-of `WorkerInputV2.asof()` materialization, and exact output validation. Enforce 16 MiB per chunk and 512 MiB cumulative input before any Worker launch.
-- [ ] **Step 4: Add reference parity tests** proving stateless output merge for several permitted partition sizes equals a sequential reference; run chunk and existing data-feed/causality tests.
-- [ ] **Step 5: Commit** as `feat(alpha-lab): plan bounded factor v2 chunks`.
+- [x] **Step 1: Write failing tests** for an 8,928-step month producing deterministic non-overlapping chunks, a 512/513 boundary, causal warmup, null preservation, input byte caps, labels/future-row exclusion, and malformed/missing/duplicate/reordered/extra output.
+- [x] **Step 2: Run** `pytest alpha_lab_service/tests/test_v2_chunks.py -q`; confirm planner and frame builder are absent.
+- [x] **Step 3: Implement** deterministic partitioning, typed schema serialization, per-as-of `WorkerInputV2.asof()` materialization, and exact output validation. Enforce 16 MiB per chunk and 512 MiB cumulative input before any Worker launch.
+- [x] **Step 4: Add reference parity tests** proving stateless output merge for several permitted partition sizes equals a sequential reference; run chunk and existing data-feed/causality tests.
+- [x] **Step 5: Commit** as `feat(alpha-lab): plan bounded factor v2 chunks`.
 
 ### Task 4: Stateful Worker v2 contract and fixed Broker endpoint
 
@@ -103,11 +103,11 @@
 - Produces a separate fixed Broker `/v2/run-chunk` operation accepting only validated task ID, chunk ID, and bounded frames; no paths, commands, image, mounts, or resource values are accepted.
 - Worker state transition is `transition(state, evaluation_frame) -> (output, next_state)`; warmup initializes state once for chunk zero, and later warmup frames are read-only context.
 
-- [ ] **Step 1: Write failing protocol tests** for v1/v2 framing separation, invalid state schema/oversized state, warmup immutability on continuation, no duplicate transition, exact output count/timestamp, and rejected Broker override fields.
-- [ ] **Step 2: Run** `pytest alpha_lab_service/tests/test_worker_v2_contract.py alpha_lab_service/tests/test_broker.py -q`; confirm only v1 behavior exists.
-- [ ] **Step 3: Implement** v2 Worker framing and Broker dispatch while leaving `/v1/run` validation and invocation unchanged. Keep the fixed Docker profile; bump worker image/protocol identity instead of widening v1.
-- [ ] **Step 4: Add unit tests** for size and frame caps, plus worker stateless and stateful sequential parity; run targeted protocol, broker, worker contract, and worker profile tests.
-- [ ] **Step 5: Commit** as `feat(alpha-lab): add isolated factor worker v2 protocol`.
+- [x] **Step 1: Write failing protocol tests** for v1/v2 framing separation, invalid state schema/oversized state, warmup immutability on continuation, no duplicate transition, exact output count/timestamp, and rejected Broker override fields.
+- [x] **Step 2: Run** `pytest alpha_lab_service/tests/test_worker_v2_contract.py alpha_lab_service/tests/test_broker.py -q`; confirm only v1 behavior exists.
+- [x] **Step 3: Implement** v2 Worker framing and Broker dispatch while leaving `/v1/run` validation and invocation unchanged. Keep the fixed Docker profile; bump worker image/protocol identity instead of widening v1.
+- [x] **Step 4: Add unit tests** for size and frame caps, plus worker stateless and stateful sequential parity; run targeted protocol, broker, worker contract, and worker profile tests.
+- [x] **Step 5: Commit** as `feat(alpha-lab): add isolated factor worker v2 protocol`.
 
 ### Task 5: Separate v2 Store, chunk checkpoints, and atomic publication
 
@@ -120,11 +120,11 @@
 - Produces transaction methods `create_or_get_task()`, `commit_chunk()`, `record_chunk_failure()`, `get_resume_state()`, and `complete_with_evidence()`.
 - `complete_with_evidence()` validates all planned chunks are committed and inserts Evidence plus terminal `COMPLETED` event in one SQLite transaction. Failed, canceled, or blocked tasks cannot publish complete Evidence.
 
-- [ ] **Step 1: Write failing Store tests** for 0700 directory/0600 database, symlink rejection, same-identity idempotence, immutable committed chunks, monotonic event transitions, checkpoint hashes, crash-safe retry state, and rollback when Evidence insert fails.
-- [ ] **Step 2: Run** `pytest alpha_lab_service/tests/test_store_v2.py -q`; confirm v2 Store is absent.
-- [ ] **Step 3: Implement** the distinct v2 schema and atomic transaction operations. Reuse the established private Store path checks, but do not modify v1 tables or default path.
-- [ ] **Step 4: Test** injected failures before and after chunk commit and at Evidence publication; run Store v2 and v1 Store tests.
-- [ ] **Step 5: Commit** as `feat(alpha-lab): persist factor v2 checkpoints safely`.
+- [x] **Step 1: Write failing Store tests** for 0700 directory/0600 database, symlink rejection, same-identity idempotence, immutable committed chunks, monotonic event transitions, checkpoint hashes, crash-safe retry state, and rollback when Evidence insert fails.
+- [x] **Step 2: Run** `pytest alpha_lab_service/tests/test_store_v2.py -q`; confirm v2 Store is absent.
+- [x] **Step 3: Implement** the distinct v2 schema and atomic transaction operations. Reuse the established private Store path checks, but do not modify v1 tables or default path.
+- [x] **Step 4: Test** injected failures before and after chunk commit and at Evidence publication; run Store v2 and v1 Store tests.
+- [x] **Step 5: Commit** as `feat(alpha-lab): persist factor v2 checkpoints safely`.
 
 ### Task 6: Recoverable v2 scheduler and evaluator handoff
 
