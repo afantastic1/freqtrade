@@ -20,8 +20,11 @@ from .market_panel import MarketPanel
 from .dataset_manifest import publish_dataset
 from .source_resolver import DatasetSourceResolver
 from .temporal_plan import DatasetBuildOptionsV1, build_temporal_plan, enforce_required_slots
-from .pit_labels import cross_sectional_labels_v2, dynamic_membership_asof, forward_returns_v2
-from .universe import DynamicUniverse
+from .pit_labels import (
+    cross_sectional_labels_v2, dynamic_membership_asof, forward_returns_v2,
+    historical_membership_asof,
+)
+from .universe import DynamicUniverse, HistoricalUniverse
 from freqtrade.exchange import timeframe_to_seconds
 
 
@@ -37,8 +40,11 @@ def _missing_decisions(source, request, step):
     delay_seconds = source.quality.get("availability_fixed_delay_seconds")
     if delay_seconds is None:
         return pd.DatetimeIndex([])
-    start = pd.Timestamp(request.start) + pd.Timedelta(seconds=delay_seconds)
-    expected = pd.date_range(start, pd.Timestamp(request.end), freq=step, inclusive="left")
+    delay = pd.Timedelta(seconds=delay_seconds)
+    first_open = (pd.Timestamp(request.start) - step - delay).ceil(step)
+    opens = pd.date_range(first_open, pd.Timestamp(request.end), freq=step, inclusive="left")
+    expected = opens + step + delay
+    expected = expected[(expected >= pd.Timestamp(request.start)) & (expected < pd.Timestamp(request.end))]
     observed = pd.DatetimeIndex(pd.to_datetime(source.availability.available_time, utc=True).dropna().unique())
     return expected.difference(observed)
 
@@ -55,7 +61,9 @@ class DatasetBuilderV2:
               universe=None) -> DatasetBuildResultV2:
         policy = self.policy_registry.get(request.campaign_id, request.policy_version, request.campaign_policy_sha256)
         request = ResearchRequestV2.from_dict(json.loads(request.canonical_json()), self.policy_registry)
-        plan = build_temporal_plan(request, policy)
+        required_history_bars = (universe.min_listing_bars
+                                 if isinstance(universe, DynamicUniverse) else 0)
+        plan = build_temporal_plan(request, policy, required_history_bars=required_history_bars)
         if plan.warmup_truncated_bars and options.missing_data_policy == "reject":
             raise ValueError(f"warmup exceeds selected split by {plan.warmup_truncated_bars} bars")
         if plan.label_extension_truncated and options.missing_data_policy == "reject":
@@ -98,7 +106,8 @@ class DatasetBuilderV2:
         market_frame["available_time"] = pd.to_datetime(market_frame.available_time, utc=True)
         market_frame = market_frame.sort_values("open_time").reset_index(drop=True)
         expected_slots = pd.date_range(
-            plan.warmup_start, plan.label_extension_end, freq=step, inclusive="left"
+            pd.Timestamp(plan.warmup_start).ceil(step), plan.label_extension_end,
+            freq=step, inclusive="left"
         )
         missing_slots = enforce_required_slots(
             expected_slots, pd.DatetimeIndex(market_frame.open_time), options.missing_data_policy
@@ -238,11 +247,13 @@ class DatasetBuilderV2:
                     max_age=_effective_max_age(auxiliary, data_type, options),
                 )
                 source_available = joined.available_time.notna()
-                if not source_available.all():
+                required_rows = frame.decision_time < pd.Timestamp(request.end)
+                required_available = source_available & required_rows
+                if not required_available.loc[required_rows].all():
                     auxiliary_issues.append({"code": "AUXILIARY_UNAVAILABLE_AT_DECISION",
                                              "symbol": symbol, "data_type": data_type,
-                                             "decision_rows": int((~source_available).sum())})
-                if options.missing_data_policy == "reject" and not source_available.all():
+                                             "decision_rows": int((~source_available & required_rows).sum())})
+                if options.missing_data_policy == "reject" and not required_available.loc[required_rows].all():
                     raise ValueError(f"auxiliary source has unavailable or stale rows: {data_type}")
                 extra = joined.drop(columns=["decision_time", "available_time"], errors="ignore")
                 prefix = f"{aux_identity.market_type}_{aux_identity.data_kind}_"
@@ -255,7 +266,10 @@ class DatasetBuilderV2:
             assets.append(market)
             by_symbol[symbol] = source
         panel = MarketPanel.from_assets(assets)
-        expected_slots = pd.date_range(plan.warmup_start, plan.label_extension_end, freq=step, inclusive="left")
+        expected_slots = pd.date_range(
+            pd.Timestamp(plan.warmup_start).ceil(step), plan.label_extension_end,
+            freq=step, inclusive="left"
+        )
         for symbol in request.symbols:
             actual = panel.frame.xs(symbol, level="symbol").index
             missing = enforce_required_slots(expected_slots, pd.DatetimeIndex(actual), options.missing_data_policy)
@@ -266,8 +280,12 @@ class DatasetBuilderV2:
                       & (decision_times < pd.Timestamp(request.end)))
         worker_mask = ((panel.frame.index.get_level_values("open_time") >= pd.Timestamp(plan.warmup_start))
                        & (decision_times < pd.Timestamp(request.end)))
-        membership = (dynamic_membership_asof(universe, panel)
-                      if isinstance(universe, DynamicUniverse) else universe.membership(panel))
+        if isinstance(universe, DynamicUniverse):
+            membership = dynamic_membership_asof(universe, panel)
+        elif isinstance(universe, HistoricalUniverse):
+            membership = historical_membership_asof(universe, panel)
+        else:
+            membership = universe.membership(panel)
         if not membership.index.equals(panel.frame.index) or membership.isna().any():
             raise ValueError("universe membership must align to market panel")
         missing_membership_symbols = []

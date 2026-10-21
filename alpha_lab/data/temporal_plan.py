@@ -27,7 +27,8 @@ class TemporalPlanV1:
     warmup_truncated_bars: int = 0
 
 
-def build_temporal_plan(request: ResearchRequestV2, policy: CampaignPolicyV1) -> TemporalPlanV1:
+def build_temporal_plan(request: ResearchRequestV2, policy: CampaignPolicyV1,
+                        *, required_history_bars: int = 0) -> TemporalPlanV1:
     if (request.campaign_id, request.policy_version, request.campaign_policy_sha256) != (
         policy.campaign_id, policy.policy_version, policy.sha256()
     ):
@@ -36,9 +37,12 @@ def build_temporal_plan(request: ResearchRequestV2, policy: CampaignPolicyV1) ->
     if split is None or request.start < split.start or request.end > split.end:
         raise ValueError("request interval outside selected split")
     step = timedelta(seconds=timeframe_to_seconds(request.timeframe))
-    # OHLCV decisions occur after the bar closes, so one source slot before the
-    # requested decision interval is needed to supply its first in-range decision.
-    warmup_start = max(split.start, request.start - (request.lookback_bars + 1) * step)
+    if type(required_history_bars) is not int or required_history_bars < 0:
+        raise ValueError("required_history_bars must be a nonnegative integer")
+    history_bars = max(request.lookback_bars, required_history_bars)
+    # OHLCV decisions occur after bar close; include the source slot that
+    # supplies the first in-range decision plus the required history before it.
+    warmup_start = max(split.start, request.start - (history_bars + 1) * step)
     available_warmup_bars = max(0, int((request.start - warmup_start) / step) - 1)
     requested_label_end = request.end + request.label_horizon_bars * step
     label_end = min(requested_label_end, split.end)
@@ -48,7 +52,7 @@ def build_temporal_plan(request: ResearchRequestV2, policy: CampaignPolicyV1) ->
         warmup_start=warmup_start, warmup_end=request.start,
         label_extension_start=request.start, label_extension_end=label_end,
         timeframe=request.timeframe, label_extension_truncated=requested_label_end > split.end,
-        warmup_truncated_bars=max(0, request.lookback_bars - available_warmup_bars),
+        warmup_truncated_bars=max(0, history_bars - available_warmup_bars),
     )
 
 

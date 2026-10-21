@@ -33,16 +33,19 @@ class Resolver:
             self.sources.append(SimpleNamespace(identity=identity, manifest_sha256=("a" if asset == "BTC" else "b") * 64, observations=obs, availability=available, quality={"status": "AVAILABLE"}))
 
     def _expected_identity(self, symbol, data_type, timeframe):
-        source = next(s for s in self.sources if s.identity.asset == self.symbols[symbol])
+        kind = {"futures_ohlcv": "ohlcv", "funding_rate": "funding_rate"}[data_type]
+        source = next(s for s in self.sources if s.identity.asset == self.symbols[symbol]
+                      and s.identity.data_kind == kind)
         return source.identity
 
     def resolve(self, request, plan, options):
         return tuple(self.sources)
 
 
-def make_request():
+def make_request(start="2023-01-01T00:15:00Z", end="2023-01-01T00:25:00Z", lookback=2, horizon=2,
+                 data_types=("futures_ohlcv",)):
     policy_raw = json.loads((Path(__file__).parents[2] / "alpha_lab_contracts/campaigns/example_campaign-v1.json").read_text())
-    raw = {"protocol_version": "2.0-research-request", "request_id": "cs-test", "campaign_id": "example_campaign", "policy_version": "1", "campaign_policy_sha256": policy_raw["policy_sha256"], "start": "2023-01-01T00:15:00Z", "end": "2023-01-01T00:25:00Z", "symbols": ["BTCUSDT", "ETHUSDT"], "timeframe": "5m", "mode": "cross_sectional", "data_types": ["futures_ohlcv"], "split": "discovery", "lookback_bars": 2, "label_horizon_bars": 2, "embargo_bars": 0}
+    raw = {"protocol_version": "2.0-research-request", "request_id": "cs-test", "campaign_id": "example_campaign", "policy_version": "1", "campaign_policy_sha256": policy_raw["policy_sha256"], "start": start, "end": end, "symbols": ["BTCUSDT", "ETHUSDT"], "timeframe": "5m", "mode": "cross_sectional", "data_types": list(data_types), "split": "discovery", "lookback_bars": lookback, "label_horizon_bars": horizon, "embargo_bars": 0}
     registry = FileCampaignPolicyRegistry()
     return ResearchRequestV2.from_dict(raw, registry), registry
 
@@ -71,8 +74,8 @@ def test_cs_uses_point_in_time_historical_membership(tmp_path):
     result = build.build(request, options=DatasetBuildOptionsV1("preserve", None, {}, {}, {}), universe=universe)
     worker = result.worker_input.frame
     eth = worker.loc[worker.symbol.eq("ETHUSDT")]
-    assert not eth.loc[eth.open_time < pd.Timestamp("2023-01-01T00:20Z"), "eligible"].any()
-    assert eth.loc[eth.open_time >= pd.Timestamp("2023-01-01T00:20Z"), "eligible"].all()
+    assert not eth.loc[eth.decision_time < pd.Timestamp("2023-01-01T00:20Z"), "eligible"].any()
+    assert eth.loc[eth.decision_time >= pd.Timestamp("2023-01-01T00:20Z"), "eligible"].all()
 
 
 def test_cs_requires_explicit_universe(tmp_path):
@@ -87,6 +90,41 @@ def test_cs_manifest_fingerprints_membership(tmp_path):
     assert result.manifest["universe_hash"]
     assert result.manifest["membership_sha256"]
     assert "survivorship_caveat" in result.manifest
+
+
+def test_cs_legal_unaligned_request_uses_exchange_timeframe_grid(tmp_path):
+    request, policy = make_request(start="2023-01-01T00:17:00Z", end="2023-01-01T00:27:00Z",
+                                   lookback=1, horizon=1)
+    build = DatasetBuilderV2(policy, Resolver({"BTCUSDT": "BTC", "ETHUSDT": "ETH"}),
+                             AvailabilityRuleRegistry({}), tmp_path)
+    result = build.build(request, options=DatasetBuildOptionsV1("reject", None, {}, {}, {}),
+                         universe=FixedUniverse("both", ("BTCUSDT", "ETHUSDT")))
+
+    assert set(result.worker_input.frame.decision_time.dt.strftime("%H:%M:%S")) >= {"00:20:01", "00:25:01"}
+    assert result.report.quality["worker_rows"] > 0
+
+
+def test_cs_reject_checks_auxiliary_only_on_worker_decisions(tmp_path):
+    request, policy = make_request(data_types=("futures_ohlcv", "funding_rate"))
+    resolver = Resolver({"BTCUSDT": "BTC", "ETHUSDT": "ETH"})
+    primary_sources = list(resolver.sources)
+    for source in primary_sources:
+        ident = source.identity
+        funding_identity = DatasetIdentity(ident.exchange, ident.market_type, ident.asset,
+                                            ident.exchange_symbol, "funding_rate", ident.timeframe)
+        events = pd.date_range("2023-01-01T00:00Z", periods=6, freq="5min")
+        available = pd.DataFrame({"event_time": events, "available_time": events + pd.Timedelta(seconds=1),
+                                  "funding_rate": [0.001] * len(events), "pit_status": ["ASSUMED"] * len(events)})
+        resolver.sources.append(SimpleNamespace(identity=funding_identity,
+                                                manifest_sha256="c" * 64, observations=available,
+                                                availability=available,
+                                                quality={"status": "AVAILABLE", "availability_max_age_seconds": 301}))
+    build = DatasetBuilderV2(policy, resolver, AvailabilityRuleRegistry({}), tmp_path)
+
+    result = build.build(request, options=DatasetBuildOptionsV1("reject", "futures_ohlcv", {}, {}, {}),
+                         universe=FixedUniverse("both", ("BTCUSDT", "ETHUSDT")))
+
+    assert result.worker_input.frame["futures_funding_rate_is_available"].all()
 
 
 def test_missing_membership_follows_build_policy(tmp_path):
@@ -115,3 +153,20 @@ def test_dynamic_membership_ignores_unavailable_older_observations():
     right = dynamic_membership_asof(universe, MarketPanel(changed))
     assert left.loc[(times[3], "BTCUSDT")] == right.loc[(times[3], "BTCUSDT")]
     assert not left.loc[(times[3], "BTCUSDT")]
+
+
+def test_dynamic_listing_age_is_cumulative_beyond_liquidity_lookback():
+    times = pd.date_range("2025-01-01T00:00Z", periods=8, freq="5min")
+    index = pd.MultiIndex.from_product([times, ["BTCUSDT"]], names=["open_time", "symbol"])
+    frame = pd.DataFrame({
+        "close": [10.] * len(times), "volume": [1.] * len(times),
+        "available_time": times + pd.Timedelta(minutes=5, seconds=1),
+        "close_time": times + pd.Timedelta(minutes=5),
+    }, index=index)
+    universe = DynamicUniverse("cumulative-age", ("BTCUSDT",), lookback=2,
+                               min_listing_bars=3, min_coverage=1., min_quote_volume=0.)
+
+    eligible = dynamic_membership_asof(universe, MarketPanel(frame))
+
+    assert not eligible.iloc[:3].any()
+    assert eligible.iloc[3:].all()

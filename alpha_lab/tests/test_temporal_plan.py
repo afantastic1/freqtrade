@@ -42,6 +42,12 @@ def test_temporal_plan_reads_exact_lookback_slots():
     assert plan.warmup_end == req.start
 
 
+def test_temporal_plan_honors_universe_history_requirement():
+    req, policy = request()
+    plan = build_temporal_plan(req, policy, required_history_bars=10)
+    assert plan.warmup_start == req.start - timedelta(minutes=55)
+
+
 def test_temporal_plan_never_crosses_selected_split():
     req, policy = request()
     req = replace(req, start=policy.splits["discovery"].start + timedelta(minutes=10), end=policy.splits["discovery"].start + timedelta(minutes=15))

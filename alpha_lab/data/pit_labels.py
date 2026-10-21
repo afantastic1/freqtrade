@@ -6,6 +6,7 @@ import pandas as pd
 
 from alpha_lab.data.dataset import MarketData
 from alpha_lab.data.market_panel import MarketPanel
+from alpha_lab.data.universe import HistoricalUniverse
 from freqtrade.exchange import timeframe_to_seconds
 
 
@@ -96,8 +97,11 @@ def dynamic_membership_asof(universe, panel: MarketPanel) -> pd.Series:
             history = quote.iloc[start:position]
             history_available = available.iloc[start:position]
             known = history.loc[history_available <= decision_time]
+            prior_quote = quote.iloc[:position]
+            prior_available = available.iloc[:position]
+            listing_history = prior_quote.loc[prior_available <= decision_time]
             coverage = known.notna().sum() / universe.lookback
-            listing_age = int(known.notna().sum())
+            listing_age = int(listing_history.notna().sum())
             values.append(bool(
                 available.iloc[position] <= decision_time
                 and listing_age >= universe.min_listing_bars
@@ -108,3 +112,13 @@ def dynamic_membership_asof(universe, panel: MarketPanel) -> pd.Series:
             ))
         result.loc[group.index] = values
     return result
+
+
+def historical_membership_asof(universe: HistoricalUniverse, panel: MarketPanel) -> pd.Series:
+    """Evaluate historical membership at the time each market row is observable."""
+    starts = universe.listings.set_index("symbol")["eligible_from"]
+    times = pd.to_datetime(panel.frame.available_time, utc=True)
+    symbols = panel.frame.index.get_level_values("symbol")
+    values = [symbol in starts.index and time >= starts.loc[symbol]
+              for symbol, time in zip(symbols, times)]
+    return pd.Series(values, index=panel.frame.index, name="eligible", dtype=bool)

@@ -101,6 +101,21 @@ def test_builder_records_missing_first_decision_at_selected_split_start(tmp_path
     assert missing[0]["decision_times"] == ["2023-01-01T00:00:01+00:00"]
 
 
+def test_builder_ts_accepts_legal_unaligned_request_on_timeframe_grid(tmp_path):
+    builder, request, options, _ = setup_build(
+        tmp_path, request_start="2023-01-01T00:17:00Z", request_end="2023-01-01T00:27:00Z"
+    )
+    options = replace(options, missing_data_policy="reject")
+
+    result = builder.build(request, options=options)
+
+    study_decisions = result.worker_input.frame.loc[
+        result.worker_input.frame.decision_time.ge(pd.Timestamp(request.start)), "decision_time"
+    ]
+    assert list(study_decisions.dt.strftime("%H:%M:%S")) == ["00:20:01", "00:25:01"]
+    assert not any(issue["code"] == "MISSING_PRIMARY_SLOTS" for issue in result.report.issues)
+
+
 def test_label_availability_waits_for_late_entry_observation():
     from alpha_lab.data.dataset import MarketData
     from alpha_lab.data.pit_labels import forward_returns_v2
