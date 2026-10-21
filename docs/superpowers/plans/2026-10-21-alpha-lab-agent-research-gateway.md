@@ -43,11 +43,11 @@
 - Identical replay returns the same record; same request ID with different canonical content raises a stable conflict error. Existing records are never updated or deleted.
 - `get` implements the existing `ResearchRequestRegistryV1.get` contract used by `resolve_authorized_run`.
 
-- [ ] **Step 1: Write failing tests** for valid authorized create/get, policy/split/symbol denial, forged unknown fields and host paths, idempotent replay, conflicting ID reuse, and read-only get.
-- [ ] **Step 2: Run focused tests and confirm the missing registry/API failures.**
-- [ ] **Step 3: Implement a new dedicated SQLite registry** with a single append-only request table, canonical JSON/digest columns, parameterized SQL, bounded IDs, and transaction-safe insert-or-compare behavior. Do not reuse or migrate Factor Service Store databases.
-- [ ] **Step 4: Run `pytest alpha_lab_service/tests/test_request_registry_v2.py -q` and confirm all cases pass.**
-- [ ] **Step 5: Commit** as `feat(alpha-lab): add trusted request registry v2`.
+- [x] **Step 1: Write failing tests** for valid authorized create/get, policy/split/symbol denial, forged unknown fields and host paths, idempotent replay, conflicting ID reuse, and read-only get.
+- [x] **Step 2: Run focused tests and confirm the missing registry/API failures.**
+- [x] **Step 3: Implement a new dedicated SQLite registry** with a single append-only request table, canonical JSON/digest columns, parameterized SQL, bounded IDs, and transaction-safe insert-or-compare behavior. Do not reuse or migrate Factor Service Store databases.
+- [x] **Step 4: Run `pytest alpha_lab_service/tests/test_request_registry_v2.py -q` and confirm all cases pass.**
+- [x] **Step 5: Commit** as `feat(alpha-lab): add trusted request registry v2`.
 
 ### Task 2: Trusted read-only Catalog coverage adapter
 
@@ -58,14 +58,14 @@
 
 **Interfaces:**
 - Produces `CatalogCoverageGatewayV2(catalog_root, source_roots, dataset_registry)` and `get_data_coverage(*, dataset_key: str, start: str, end: str) -> dict`.
-- `dataset_registry` is operator-injected and maps bounded public keys `(exchange, market_type, asset, data_kind, timeframe)` to trusted Catalog dataset IDs. Agent input never supplies roots or source mappings.
+- `dataset_registry` is operator-injected and maps bounded public string aliases (for example, `binance:futures:BTC:ohlcv:5m`) to trusted Catalog dataset IDs. Agent input never supplies roots or source mappings.
 - The adapter returns Catalog v3 status, actual interval/partition data, and stable `NOT_CONFIGURED`/`UNAVAILABLE` errors; it does not register, validate-and-repair, refresh, or download.
 
-- [ ] **Step 1: Write failing tests** for known/unknown dataset keys, invalid/reversed intervals, missing coverage, valid partial coverage, unavailable source, path injection rejection, and Catalog/source-root byte hashes unchanged after queries.
-- [ ] **Step 2: Run focused tests and confirm the new gateway is absent.**
-- [ ] **Step 3: Implement the fixed-root adapter** using Catalog v3 `get_coverage` and strict UTC interval parsing; cap response size and reported gap count.
-- [ ] **Step 4: Run `pytest alpha_lab_service/tests/test_catalog_gateway_v2.py -q`.**
-- [ ] **Step 5: Commit** as `feat(alpha-lab): add read-only catalog coverage gateway`.
+- [x] **Step 1: Write failing tests** for known/unknown dataset keys, invalid/reversed intervals, missing coverage, valid partial coverage, unavailable source, path injection rejection, and Catalog/source-root byte hashes unchanged after queries.
+- [x] **Step 2: Run focused tests and confirm the new gateway is absent.**
+- [x] **Step 3: Implement the fixed-root adapter** using Catalog v3 `get_coverage` and strict UTC interval parsing; cap response size and reported gap count.
+- [x] **Step 4: Run `pytest alpha_lab_service/tests/test_catalog_gateway_v2.py -q`.**
+- [x] **Step 5: Commit** as `feat(alpha-lab): add read-only catalog coverage gateway`.
 
 ### Task 3: Agent research gateway and execution gate
 
