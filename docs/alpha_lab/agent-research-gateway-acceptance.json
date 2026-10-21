@@ -1,0 +1,38 @@
+{
+  "protocol": "alpha-lab-agent-gateway-acceptance-v1",
+  "code_head": "81805ccc600af9a9c69bb21ce4c06ab4197798a9",
+  "campaign_sha256": "ed7d76c355fd5afcd045183bacab9b86e3393f25c66c3a8c9fa33bee03a8591a",
+  "request_sha256": null,
+  "catalog": {
+    "status": "MISSING",
+    "observed_count": 0,
+    "manifest_sha256": null,
+    "partition_sha256": [],
+    "requested_interval": "[2026-01-01, 2026-10-01)",
+    "snapshot_id": "five available Catalog V3 snapshots reviewed; all MISSING"
+  },
+  "isolation": {
+    "verified": false,
+    "checks": {},
+    "proof_digest": null
+  },
+  "synthetic_checks": {
+    "request_registry_and_catalog_gateway": "passed",
+    "agent_gateway_and_legacy_compatibility": "passed",
+    "agent_mcp_profile_and_legacy_compatibility": "passed"
+  },
+  "real_data_tests": {
+    "btc_futures_5m_real_data_e2e": "not_run_data_missing"
+  },
+  "test_results": {
+    "focused_service_contract_governance_suite": "107 passed, 2 pytest configuration warnings",
+    "active_governance_command": "passed",
+    "btc_futures_5m_real_data_e2e": "not run: all five reviewed snapshots were MISSING"
+  },
+  "gates": {
+    "real_data": "BLOCKED_DATA_UNAVAILABLE",
+    "isolation": "BLOCKED_ISOLATION_UNVERIFIED"
+  },
+  "dispatch_status": "NOT_DISPATCHED",
+  "evidence_id": null
+}

@@ -24,6 +24,8 @@ SERVICE_V3_FILES = SERVICE_V2_FILES + (
     "docs/alpha_lab/python-factor-service-v2-acceptance.json",
     "docs/alpha_lab/unified-descriptive-evidence-acceptance.md",
     "docs/alpha_lab/unified-descriptive-evidence-acceptance.json",
+    "docs/alpha_lab/agent-research-gateway-acceptance.md",
+    "docs/alpha_lab/agent-research-gateway-acceptance.json",
 )
 GOVERNANCE_FILES = (
     ".github/CODEOWNERS",

@@ -124,12 +124,12 @@
 - Real BTC 2026-01 through 2026-10 half-open 5m coverage must be verified before claiming the full chain. If Catalog data remains `MISSING`, record `BLOCKED_DATA_UNAVAILABLE`; if OS/container isolation proof is absent, record `BLOCKED_ISOLATION_UNVERIFIED`; do not synthesize a successful real-data result.
 - PR-07 Agent execution remains disabled in production configuration until isolation proof is supplied and independently reviewed.
 
-- [ ] **Step 1: Write acceptance tests** for no network/no external data side effects, distinct synthetic-vs-real labels, blocked status for missing real data, blocked status for absent isolation, and complete report provenance.
-- [ ] **Step 2: Run focused acceptance tests and confirm failures.**
-- [ ] **Step 3: Add bounded acceptance runner/report, governance manifest entries and CI path coverage** for all new gateway/registry/catalog/security files; leave `freeze-manifest-v1.1.json` byte-identical.
-- [ ] **Step 4: Run required focused service/contracts/governance checks and `python -m alpha_lab_service.governance`; record exact outputs.**
-- [ ] **Step 5: Run BTC 2026 real-data preflight.** Only run the complete request-to-Evidence acceptance if actual Catalog coverage and trusted isolation both pass; otherwise produce the explicit blocked acceptance artifact.
-- [ ] **Step 6: Commit** as `test(alpha-lab): record agent gateway acceptance`.
+- [x] **Step 1: Write acceptance tests** for no network/no external data side effects, distinct synthetic-vs-real labels, blocked status for missing real data, blocked status for absent isolation, and complete report provenance.
+- [x] **Step 2: Run focused acceptance tests and confirm failures.**
+- [x] **Step 3: Add bounded acceptance runner/report, governance manifest entries and CI path coverage** for all new gateway/registry/catalog/security files; leave `freeze-manifest-v1.1.json` byte-identical.
+- [x] **Step 4: Run required focused service/contracts/governance checks and `python -m alpha_lab_service.governance`; record exact outputs.**
+- [x] **Step 5: Run BTC 2026 real-data preflight.** Only run the complete request-to-Evidence acceptance if actual Catalog coverage and trusted isolation both pass; otherwise produce the explicit blocked acceptance artifact.
+- [x] **Step 6: Commit** as `test(alpha-lab): record agent gateway acceptance`.
 
 ## Plan self-review
 

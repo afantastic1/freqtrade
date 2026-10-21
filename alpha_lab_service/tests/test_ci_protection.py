@@ -29,6 +29,7 @@ def test_ci_triggers_and_checks_all_service_security_boundaries():
         "alpha_lab_service/protocol-manifest-v2.json", "alpha_lab_contracts/**",
         "docs/alpha_lab/python-factor-*.md",
         "docs/alpha_lab/unified-descriptive-evidence-acceptance.*",
+        "docs/alpha_lab/agent-research-gateway-acceptance.*",
     ):
         assert path in text
     assert "test_worker_container.py" in text
@@ -54,6 +55,9 @@ def test_new_service_manifest_covers_its_verifier_worker_and_admission_gate():
     files = json.loads(manifest.read_text(encoding="utf-8"))["files"]
     assert expected <= set(files)
     assert "docs/alpha_lab/unified-descriptive-evidence-acceptance.md" in files
+    assert "alpha_lab_service/acceptance_agent_v2.py" in files
+    assert "alpha_lab_service/tests/test_acceptance_agent_v2.py" in files
+    assert "docs/alpha_lab/agent-research-gateway-acceptance.md" in files
 
 
 def test_v12_governance_keeps_every_v11_frozen_core_hash_valid():

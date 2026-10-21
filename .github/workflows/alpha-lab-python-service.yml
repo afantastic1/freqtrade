@@ -15,6 +15,7 @@ on:
       - "alpha_lab_service/protocol-manifest-v2.json"
       - "docs/alpha_lab/python-factor-*.md"
       - "docs/alpha_lab/unified-descriptive-evidence-acceptance.*"
+      - "docs/alpha_lab/agent-research-gateway-acceptance.*"
   pull_request:
     paths:
       - "alpha_lab_service/**"
@@ -28,6 +29,7 @@ on:
       - "alpha_lab_service/protocol-manifest-v2.json"
       - "docs/alpha_lab/python-factor-*.md"
       - "docs/alpha_lab/unified-descriptive-evidence-acceptance.*"
+      - "docs/alpha_lab/agent-research-gateway-acceptance.*"
 
 permissions:
   contents: read
@@ -54,3 +56,5 @@ jobs:
         run: uv run --project alpha_lab_service --locked python -m alpha_lab_service.governance
       - name: Run protocol, contract, store, MCP, causal and actual-container tests
         run: uv run --project alpha_lab_service --locked python -m pytest -q alpha_lab_service/tests/test_worker_container.py alpha_lab_service/tests/test_end_to_end.py alpha_lab_service/tests
+      - name: Verify active governance and acceptance report
+        run: uv run --project alpha_lab_service --locked python -m alpha_lab_service.governance
