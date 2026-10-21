@@ -1,0 +1,423 @@
+{
+  "campaign": {
+    "campaign_id": "dataset_builder_acceptance",
+    "interval": {
+      "end": "2025-01-01T00:00:00Z",
+      "start": "2022-01-01T00:00:00Z"
+    },
+    "policy_sha256": "b0b2ca3f678c991a1d104f9141ea4f8434bebd987638a5754878ed7c838aa61f",
+    "policy_version": "1",
+    "split": "discovery"
+  },
+  "catalog_snapshot": {
+    "manifest_path": "/tmp/alpha-lab-pr09/catalog-v3/catalog-v3/datasets/binance-futures-btc-ohlcv-5m-6c7cb41c78f4/de43ea4c0b81ed09ddeccf2edddcae588bad89d7863597b6ee320c0ce5a9ba38.json",
+    "manifest_sha256": "1457dffa171fb3b4bf0007a352728ad588c29a50c1f2e118e1e46eb94598f39d",
+    "normalized_root": "/tmp/alpha-lab-pr09/normalized",
+    "registered_at": "2026-10-21T06:15:31.618269+00:00",
+    "revision": {
+      "previous_manifest_sha256": "897f836bbd52b6652b5c0e656d7bbdbf7775109da30bbc007e18889f258727bf",
+      "reason": "publish immutable normalized Parquet partition"
+    },
+    "temporary_catalog_root": "/tmp/alpha-lab-pr09/catalog-v3"
+  },
+  "code_head": "fef168b30f2fa6cbfc81e96ff43696dec00bb83b",
+  "dataset": {
+    "all_partition_quality_available": true,
+    "asset": "BTC",
+    "cadence_seconds": 300.0,
+    "coverage_status": "AVAILABLE",
+    "data_kind": "ohlcv",
+    "dataset_id": "binance-futures-btc-ohlcv-5m-6c7cb41c78f4",
+    "exchange": "binance",
+    "exchange_symbol": "BTC/USDT:USDT",
+    "interval": {
+      "end": "2025-01-01T00:00:00Z",
+      "start": "2022-01-01T00:00:00Z"
+    },
+    "market_type": "futures",
+    "missing_interval_count": 0,
+    "observed_rows": 315648,
+    "partition_count": 36,
+    "timeframe": "5m"
+  },
+  "evidence_class": "local_real_data_catalog",
+  "generated_on": "2026-10-21",
+  "limitations": [
+    "Catalog and normalized partitions were created under /tmp; they are local acceptance artifacts, not a deployed read-only mount.",
+    "This evidence does not prove physical denial of 2025+ reads to the Agent or trusted service process.",
+    "No production Agent request or Evidence was created."
+  ],
+  "partitions": [
+    {
+      "end": "2022-02-01T00:00:00Z",
+      "first_observation": "2022-01-01T00:00:00Z",
+      "last_observation": "2022-01-31T23:55:00Z",
+      "normalized_sha256": "f15894680d0aebd0699f70594239795118986e77a8bbd941ec107df6ba94b253",
+      "partition_fingerprint": "2190526d082b0d4c7b07fac798ed19953489ab328ae00c8dad47ff435731d73e",
+      "quality_status": "AVAILABLE",
+      "row_count": 8928,
+      "start": "2022-01-01T00:00:00Z"
+    },
+    {
+      "end": "2022-03-01T00:00:00Z",
+      "first_observation": "2022-02-01T00:00:00Z",
+      "last_observation": "2022-02-28T23:55:00Z",
+      "normalized_sha256": "b52110297fed7d3207da47c6d420cafc09279d4e7f9ab75535230dbd87e9ec85",
+      "partition_fingerprint": "16f85a641158e80a4412939ff867759bc6145d7824d24a2b6cfa2bfa03709091",
+      "quality_status": "AVAILABLE",
+      "row_count": 8064,
+      "start": "2022-02-01T00:00:00Z"
+    },
+    {
+      "end": "2022-04-01T00:00:00Z",
+      "first_observation": "2022-03-01T00:00:00Z",
+      "last_observation": "2022-03-31T23:55:00Z",
+      "normalized_sha256": "a845728c63621e4a028eb5046e7cebccba85d53f9291f99dc1d5dd547fc730b9",
+      "partition_fingerprint": "d8a4a9c670b2220518a1e3bd54b6dd3965af76deb3f6a7127c5c98eebbf49311",
+      "quality_status": "AVAILABLE",
+      "row_count": 8928,
+      "start": "2022-03-01T00:00:00Z"
+    },
+    {
+      "end": "2022-05-01T00:00:00Z",
+      "first_observation": "2022-04-01T00:00:00Z",
+      "last_observation": "2022-04-30T23:55:00Z",
+      "normalized_sha256": "087b23a62fb27e250599f88142466d13aa755274cf33dec42c38a135ec9c34af",
+      "partition_fingerprint": "fb21f4bba57c92690a8fdceb3e9e769cf2d90e54ad8a430042e23f86eee70a94",
+      "quality_status": "AVAILABLE",
+      "row_count": 8640,
+      "start": "2022-04-01T00:00:00Z"
+    },
+    {
+      "end": "2022-06-01T00:00:00Z",
+      "first_observation": "2022-05-01T00:00:00Z",
+      "last_observation": "2022-05-31T23:55:00Z",
+      "normalized_sha256": "f88dbfa88b0c7fbcb3c03b820bd56de94b3346a898dfde1ca96a31a3f1dc59d6",
+      "partition_fingerprint": "6dad23ae13aa3ab7fec10fcf2b0fd7c2687fe65873c124586620b35bf968a36a",
+      "quality_status": "AVAILABLE",
+      "row_count": 8928,
+      "start": "2022-05-01T00:00:00Z"
+    },
+    {
+      "end": "2022-07-01T00:00:00Z",
+      "first_observation": "2022-06-01T00:00:00Z",
+      "last_observation": "2022-06-30T23:55:00Z",
+      "normalized_sha256": "9b4db49a01832cacc46c471b92fad309e38b0f68eb1d37eec2a70b7a2069bf28",
+      "partition_fingerprint": "280a3b145ae0c5bf328b24b8135a021ea52fe928ce33ec94a5963f1e3c243566",
+      "quality_status": "AVAILABLE",
+      "row_count": 8640,
+      "start": "2022-06-01T00:00:00Z"
+    },
+    {
+      "end": "2022-08-01T00:00:00Z",
+      "first_observation": "2022-07-01T00:00:00Z",
+      "last_observation": "2022-07-31T23:55:00Z",
+      "normalized_sha256": "c1c982c8c8cfc49f2fcd774a06632914fbd0fede58cc2fda20f68276a2c3db9b",
+      "partition_fingerprint": "83c03eacedd5109e89855e6b8f84589b29ccd7e1609b2026487047850de1220a",
+      "quality_status": "AVAILABLE",
+      "row_count": 8928,
+      "start": "2022-07-01T00:00:00Z"
+    },
+    {
+      "end": "2022-09-01T00:00:00Z",
+      "first_observation": "2022-08-01T00:00:00Z",
+      "last_observation": "2022-08-31T23:55:00Z",
+      "normalized_sha256": "16601745782edcba2cd3fd85680384e13b5f477cc883abcfd8a5749c7b146924",
+      "partition_fingerprint": "a10106ab60e856889979b3867ece425f89a0519312f1ab17adb08ef2d85bdcdc",
+      "quality_status": "AVAILABLE",
+      "row_count": 8928,
+      "start": "2022-08-01T00:00:00Z"
+    },
+    {
+      "end": "2022-10-01T00:00:00Z",
+      "first_observation": "2022-09-01T00:00:00Z",
+      "last_observation": "2022-09-30T23:55:00Z",
+      "normalized_sha256": "6b8f71da68ae35c05d291554c849c67dccc80fc228165fd3a17573a9737ca238",
+      "partition_fingerprint": "2f009dd7da2864f9e2e8d730e689e95e427e7f64e8d2dd7723f7196caf9dbc69",
+      "quality_status": "AVAILABLE",
+      "row_count": 8640,
+      "start": "2022-09-01T00:00:00Z"
+    },
+    {
+      "end": "2022-11-01T00:00:00Z",
+      "first_observation": "2022-10-01T00:00:00Z",
+      "last_observation": "2022-10-31T23:55:00Z",
+      "normalized_sha256": "b7e3aaffad32527eb918d7133a47e2fecfeb4e5fa1778bd1b6a810193d93fe9e",
+      "partition_fingerprint": "d8d6e9c482e5d6c8f338031d490fbcf821acfadff1c7eb51761c3dae8c71148c",
+      "quality_status": "AVAILABLE",
+      "row_count": 8928,
+      "start": "2022-10-01T00:00:00Z"
+    },
+    {
+      "end": "2022-12-01T00:00:00Z",
+      "first_observation": "2022-11-01T00:00:00Z",
+      "last_observation": "2022-11-30T23:55:00Z",
+      "normalized_sha256": "27f81f1c2da46140240db1a1fc741a9dccb2a660cb9af0b4b0f7da2ed5330821",
+      "partition_fingerprint": "187596e30961b7cc03a7c1a599fa280de360ed3255eca83b52d25adba810ec36",
+      "quality_status": "AVAILABLE",
+      "row_count": 8640,
+      "start": "2022-11-01T00:00:00Z"
+    },
+    {
+      "end": "2023-01-01T00:00:00Z",
+      "first_observation": "2022-12-01T00:00:00Z",
+      "last_observation": "2022-12-31T23:55:00Z",
+      "normalized_sha256": "1b8e9ce89a73cb2af1ab92c191d89e31cb1ee33366b10029522ea8bab5fb682c",
+      "partition_fingerprint": "9f53f849bc43642edd70c33dcb228c991fd6e254284a2d687a555e405c0760a6",
+      "quality_status": "AVAILABLE",
+      "row_count": 8928,
+      "start": "2022-12-01T00:00:00Z"
+    },
+    {
+      "end": "2023-02-01T00:00:00Z",
+      "first_observation": "2023-01-01T00:00:00Z",
+      "last_observation": "2023-01-31T23:55:00Z",
+      "normalized_sha256": "ea1a18e216c0357ef8f8ab73f08453799daab8b8e994f69d3c4e356e86b50caa",
+      "partition_fingerprint": "b1c6353720e00adc493b67df23b966f236690faa7f4b91d538d6653d78140ef9",
+      "quality_status": "AVAILABLE",
+      "row_count": 8928,
+      "start": "2023-01-01T00:00:00Z"
+    },
+    {
+      "end": "2023-03-01T00:00:00Z",
+      "first_observation": "2023-02-01T00:00:00Z",
+      "last_observation": "2023-02-28T23:55:00Z",
+      "normalized_sha256": "50eb97ded0db163a481ed370d8faa44d55949e7cef814dc1b3ba1b62d5aae5bd",
+      "partition_fingerprint": "64bcf7b597b1006c58bcd947228d4ad6d4e9672e386c02e302daedf71fb916ea",
+      "quality_status": "AVAILABLE",
+      "row_count": 8064,
+      "start": "2023-02-01T00:00:00Z"
+    },
+    {
+      "end": "2023-04-01T00:00:00Z",
+      "first_observation": "2023-03-01T00:00:00Z",
+      "last_observation": "2023-03-31T23:55:00Z",
+      "normalized_sha256": "ea0911783d9e483ad264fe292d1206870eaa0ead4780252fb2b7b9de450007ee",
+      "partition_fingerprint": "6a82dfce2bf1a8332e4df66dab8d39a7d5255ee3d11851ad69d9e1773357f3a5",
+      "quality_status": "AVAILABLE",
+      "row_count": 8928,
+      "start": "2023-03-01T00:00:00Z"
+    },
+    {
+      "end": "2023-05-01T00:00:00Z",
+      "first_observation": "2023-04-01T00:00:00Z",
+      "last_observation": "2023-04-30T23:55:00Z",
+      "normalized_sha256": "fbcf11a6df311a9676015d69ecee3c167b0ce5c7090e5b6f22b068fca70c9e2f",
+      "partition_fingerprint": "e439ef735866316acf27bfbd5b3d548a0abaafcbf8679a573178a3b2080dd7c5",
+      "quality_status": "AVAILABLE",
+      "row_count": 8640,
+      "start": "2023-04-01T00:00:00Z"
+    },
+    {
+      "end": "2023-06-01T00:00:00Z",
+      "first_observation": "2023-05-01T00:00:00Z",
+      "last_observation": "2023-05-31T23:55:00Z",
+      "normalized_sha256": "9d11fd0f511b0350d7e7ec96b9d8a75c0c0dd6d5afa135bae52f17bbe5479373",
+      "partition_fingerprint": "96e688415f358abd7e66c063e0523eed0c2bd5909cd533bf7bc0840f507b2cfa",
+      "quality_status": "AVAILABLE",
+      "row_count": 8928,
+      "start": "2023-05-01T00:00:00Z"
+    },
+    {
+      "end": "2023-07-01T00:00:00Z",
+      "first_observation": "2023-06-01T00:00:00Z",
+      "last_observation": "2023-06-30T23:55:00Z",
+      "normalized_sha256": "1a80a6574107c13f13dc7cfda8fdfc87503b6ecff61ec81e7f8cb1315ed4bbe8",
+      "partition_fingerprint": "ed8ab6393d963183b6873eba330142b4691f314458d191b7fa327aa67aa4cb32",
+      "quality_status": "AVAILABLE",
+      "row_count": 8640,
+      "start": "2023-06-01T00:00:00Z"
+    },
+    {
+      "end": "2023-08-01T00:00:00Z",
+      "first_observation": "2023-07-01T00:00:00Z",
+      "last_observation": "2023-07-31T23:55:00Z",
+      "normalized_sha256": "003596268b40984bb8d5b447be156b6613cfa89fc8612e6601ec58715101cb27",
+      "partition_fingerprint": "5e784d620c73f6b65719385946ffb09996c7f77699bfb1a4d6de1bddbf77c7e1",
+      "quality_status": "AVAILABLE",
+      "row_count": 8928,
+      "start": "2023-07-01T00:00:00Z"
+    },
+    {
+      "end": "2023-09-01T00:00:00Z",
+      "first_observation": "2023-08-01T00:00:00Z",
+      "last_observation": "2023-08-31T23:55:00Z",
+      "normalized_sha256": "3e86a421ba15f33f0eb89e539ccabcc0236ace0e56af45a3be40ecebd846c1bb",
+      "partition_fingerprint": "4168f33d55f7d94b95726b7e498b41b8262cc08f6eea7aa91ca5db4f769cf63e",
+      "quality_status": "AVAILABLE",
+      "row_count": 8928,
+      "start": "2023-08-01T00:00:00Z"
+    },
+    {
+      "end": "2023-10-01T00:00:00Z",
+      "first_observation": "2023-09-01T00:00:00Z",
+      "last_observation": "2023-09-30T23:55:00Z",
+      "normalized_sha256": "70f662aae9b4f5e17f71a501a8f034f5736cd4eb7a4d99ad5b572ca3e7e8f821",
+      "partition_fingerprint": "0c26c3233245d9f762379cf5be098615dfe644fb0418e321e0c2398b70c21aec",
+      "quality_status": "AVAILABLE",
+      "row_count": 8640,
+      "start": "2023-09-01T00:00:00Z"
+    },
+    {
+      "end": "2023-11-01T00:00:00Z",
+      "first_observation": "2023-10-01T00:00:00Z",
+      "last_observation": "2023-10-31T23:55:00Z",
+      "normalized_sha256": "2220567297003e585de357f95cac633a4f6c632b9f862e5480ff45e5549c4276",
+      "partition_fingerprint": "e9cafe5ddf7cf83c67604c6e4152b4eaa76fc0725bb766411b5a58f6ef74e4ef",
+      "quality_status": "AVAILABLE",
+      "row_count": 8928,
+      "start": "2023-10-01T00:00:00Z"
+    },
+    {
+      "end": "2023-12-01T00:00:00Z",
+      "first_observation": "2023-11-01T00:00:00Z",
+      "last_observation": "2023-11-30T23:55:00Z",
+      "normalized_sha256": "44ba0e78a50fc3d6eeb6d117023b1e2f60f8990b59bec48f2ce03bac907d59fe",
+      "partition_fingerprint": "f952093a062e4e2aff32a9a8cf231b69b8ad186da8397d7784e642f3a04dc2c1",
+      "quality_status": "AVAILABLE",
+      "row_count": 8640,
+      "start": "2023-11-01T00:00:00Z"
+    },
+    {
+      "end": "2024-01-01T00:00:00Z",
+      "first_observation": "2023-12-01T00:00:00Z",
+      "last_observation": "2023-12-31T23:55:00Z",
+      "normalized_sha256": "13c11bd1f294960d85294a1d930cfa3284f73c2492a62395f87d92fe6b6b459c",
+      "partition_fingerprint": "d2491880d0437727ba839eb9b47a4501f77095699ee44965a0ae33192372f6eb",
+      "quality_status": "AVAILABLE",
+      "row_count": 8928,
+      "start": "2023-12-01T00:00:00Z"
+    },
+    {
+      "end": "2024-02-01T00:00:00Z",
+      "first_observation": "2024-01-01T00:00:00Z",
+      "last_observation": "2024-01-31T23:55:00Z",
+      "normalized_sha256": "35dbf0ac6e01d0c870b1a6941403b57174677fb08b30de8078dd5bacf7692cea",
+      "partition_fingerprint": "da044a6f485e476b077385255b0c1246879a92547d4e11b0ee2745efa689ff7a",
+      "quality_status": "AVAILABLE",
+      "row_count": 8928,
+      "start": "2024-01-01T00:00:00Z"
+    },
+    {
+      "end": "2024-03-01T00:00:00Z",
+      "first_observation": "2024-02-01T00:00:00Z",
+      "last_observation": "2024-02-29T23:55:00Z",
+      "normalized_sha256": "13cf007a51b57c57da56d2ebd67605a23f23938227d81c2ec6308c2905a5f1bd",
+      "partition_fingerprint": "6ecd83221c91100551f1523dae047fa96b98eff6f2e372c7caef4bf47a416c3e",
+      "quality_status": "AVAILABLE",
+      "row_count": 8352,
+      "start": "2024-02-01T00:00:00Z"
+    },
+    {
+      "end": "2024-04-01T00:00:00Z",
+      "first_observation": "2024-03-01T00:00:00Z",
+      "last_observation": "2024-03-31T23:55:00Z",
+      "normalized_sha256": "6e93d5511a8af5ed12479eb85a8db9419268874590defd181b4d86f5dc4431c1",
+      "partition_fingerprint": "70173915eb31fc14954e5466050c9f5127a1a652de3fa974b90ba0253bcd7850",
+      "quality_status": "AVAILABLE",
+      "row_count": 8928,
+      "start": "2024-03-01T00:00:00Z"
+    },
+    {
+      "end": "2024-05-01T00:00:00Z",
+      "first_observation": "2024-04-01T00:00:00Z",
+      "last_observation": "2024-04-30T23:55:00Z",
+      "normalized_sha256": "9b5f61ac4b5237f78d5045f6239669ff982f95417b1c68812e6e66a3bc07e66c",
+      "partition_fingerprint": "9d5ed73225d8ea5a9579fa02bd59efacf9e77c88f440278dc29df7f5d7ab6a3c",
+      "quality_status": "AVAILABLE",
+      "row_count": 8640,
+      "start": "2024-04-01T00:00:00Z"
+    },
+    {
+      "end": "2024-06-01T00:00:00Z",
+      "first_observation": "2024-05-01T00:00:00Z",
+      "last_observation": "2024-05-31T23:55:00Z",
+      "normalized_sha256": "5d45978c2bd076fced22c7628c87776ec28990369dc73c3e334be76b1b6561bd",
+      "partition_fingerprint": "40490bd802cfa1813fc29c9a13323d289487d3533f08e2cdf24b8b0fad5ebcc7",
+      "quality_status": "AVAILABLE",
+      "row_count": 8928,
+      "start": "2024-05-01T00:00:00Z"
+    },
+    {
+      "end": "2024-07-01T00:00:00Z",
+      "first_observation": "2024-06-01T00:00:00Z",
+      "last_observation": "2024-06-30T23:55:00Z",
+      "normalized_sha256": "0285e24d6796642bb25c3e4fcb5775afa0795c2de0e72f71bc00b43d92c1e1ad",
+      "partition_fingerprint": "4ac8f9be23d8dd3a8a82a064bb7daa8ba165acd60c1435bb84f9e52c294bfa46",
+      "quality_status": "AVAILABLE",
+      "row_count": 8640,
+      "start": "2024-06-01T00:00:00Z"
+    },
+    {
+      "end": "2024-08-01T00:00:00Z",
+      "first_observation": "2024-07-01T00:00:00Z",
+      "last_observation": "2024-07-31T23:55:00Z",
+      "normalized_sha256": "2753027f0be0ab254822e350afca1bbbfafca52e9d51126b9832fa9a4dd1782e",
+      "partition_fingerprint": "f51d70b3e79d515c5de5d91912b249beac19c72cb29b37eedb4248e7cf978538",
+      "quality_status": "AVAILABLE",
+      "row_count": 8928,
+      "start": "2024-07-01T00:00:00Z"
+    },
+    {
+      "end": "2024-09-01T00:00:00Z",
+      "first_observation": "2024-08-01T00:00:00Z",
+      "last_observation": "2024-08-31T23:55:00Z",
+      "normalized_sha256": "a92af8882d212f8d00fb90f77b1679bb1c85459c4659dcfee24fe65991a71bfe",
+      "partition_fingerprint": "db564a0ff638c97a1689445fc373f5d417c8a31d2e8f47df2db3903cd36d0e91",
+      "quality_status": "AVAILABLE",
+      "row_count": 8928,
+      "start": "2024-08-01T00:00:00Z"
+    },
+    {
+      "end": "2024-10-01T00:00:00Z",
+      "first_observation": "2024-09-01T00:00:00Z",
+      "last_observation": "2024-09-30T23:55:00Z",
+      "normalized_sha256": "775fc009bd4f237517ebc568c0f7964902eca596cd84e209de3fd19b28f438ba",
+      "partition_fingerprint": "5586177eb544930735c54bb7e1a77d09abfa52019942d7bf0afd2cb88a8e6044",
+      "quality_status": "AVAILABLE",
+      "row_count": 8640,
+      "start": "2024-09-01T00:00:00Z"
+    },
+    {
+      "end": "2024-11-01T00:00:00Z",
+      "first_observation": "2024-10-01T00:00:00Z",
+      "last_observation": "2024-10-31T23:55:00Z",
+      "normalized_sha256": "08bdb5acd071bf74f56cd7e8f53dd6b39cbf72e2cd88352eb0694ac91428ff16",
+      "partition_fingerprint": "f6bd354955364c908eba88e14af9986eaaca2865fb5ca58aa99235805df8ede0",
+      "quality_status": "AVAILABLE",
+      "row_count": 8928,
+      "start": "2024-10-01T00:00:00Z"
+    },
+    {
+      "end": "2024-12-01T00:00:00Z",
+      "first_observation": "2024-11-01T00:00:00Z",
+      "last_observation": "2024-11-30T23:55:00Z",
+      "normalized_sha256": "9c04206b750d1a703679ae7f0dcdb240984899c986711967c01bc0e2e4c6f168",
+      "partition_fingerprint": "c83f4384a0a5d719bc7af26764bd58b00e95194e6502426b97d4b55f90a548c9",
+      "quality_status": "AVAILABLE",
+      "row_count": 8640,
+      "start": "2024-11-01T00:00:00Z"
+    },
+    {
+      "end": "2025-01-01T00:00:00Z",
+      "first_observation": "2024-12-01T00:00:00Z",
+      "last_observation": "2024-12-31T23:55:00Z",
+      "normalized_sha256": "17cdab6395f1abf01843600b7f08636e5388c1bcf214e36e091deb735082b8d5",
+      "partition_fingerprint": "0187c846ee57691c2d814be1d2ff9e554519cd040f657fd5f029272086a25734",
+      "quality_status": "AVAILABLE",
+      "row_count": 8928,
+      "start": "2024-12-01T00:00:00Z"
+    }
+  ],
+  "reproduction": {
+    "coverage_check": "./.venv/bin/python -m data_engineering sources plan --adapter local --source-root binance=user_data/data/binance --catalog /tmp/alpha-lab-pr09/catalog-v3 --normalized-root /tmp/alpha-lab-pr09/normalized --dry-run --exchange binance --market-type futures --asset BTC --exchange-symbol BTC/USDT:USDT --data-kind ohlcv --timeframe 5m --start 2022-01-01T00:00:00Z --end 2025-01-01T00:00:00Z --request-id pr09-btc-futures-5m-discovery-coverage",
+    "discover_and_sync": "./.venv/bin/python -m data_engineering sources sync --adapter local --source-root binance=user_data/data/binance --catalog /tmp/alpha-lab-pr09/catalog-v3 --normalized-root /tmp/alpha-lab-pr09/normalized --exchange binance --market-type futures --asset BTC --exchange-symbol BTC/USDT:USDT --data-kind ohlcv --timeframe 5m --start 2022-01-01T00:00:00Z --end 2025-01-01T00:00:00Z --request-id pr09-btc-futures-5m-discovery-2022-2024"
+  },
+  "schema": "alpha-lab-pr09-btc-coverage-evidence-v1",
+  "source": {
+    "bytes": 12265738,
+    "path": "user_data/data/binance/futures/BTC_USDT_USDT-5m-futures.feather",
+    "sha256": "f39767aefb7f9e2b6651912a1e84b85fef3ac6ada8a6026eeb153d93914d589c",
+    "source_was_modified": false
+  }
+}
