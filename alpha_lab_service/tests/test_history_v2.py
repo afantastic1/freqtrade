@@ -62,7 +62,7 @@ def test_history_limit_is_bounded(tmp_path):
 
 
 def test_history_query_does_not_mutate_store_bytes(tmp_path):
-    _legacy, v1, v2 = _stores(tmp_path)
-    before = (_sha(v1.path), _sha(v2.path))
-    UnifiedResearchHistory({"python-factor-v1": v1, "python-factor-v2": v2}).list_history()
-    assert (_sha(v1.path), _sha(v2.path)) == before
+    legacy, v1, v2 = _stores(tmp_path)
+    before = (_sha(legacy.db_path), _sha(v1.path), _sha(v2.path))
+    UnifiedResearchHistory({"legacy": legacy, "python-factor-v1": v1, "python-factor-v2": v2}).list_history()
+    assert (_sha(legacy.db_path), _sha(v1.path), _sha(v2.path)) == before

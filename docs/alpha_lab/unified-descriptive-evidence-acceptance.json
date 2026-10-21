@@ -1,0 +1,112 @@
+{
+  "acceptance_version": "alpha-lab-unified-descriptive-evidence-v1",
+  "tested_head": "66c4101fc5",
+  "overall_status": "PASS",
+  "data_layer": {
+    "status": "PASS",
+    "real_source": {
+      "exchange": "Binance Vision",
+      "market": "USD-M futures",
+      "symbol": "BTCUSDT",
+      "timeframe": "5m",
+      "month": "2025-05",
+      "archive_sha256": "073da284f178e72777abbfbcf79faa99fcf77bd69c4a678938abbf6cd7d14f5b",
+      "dataset_id": "binance-futures-btc-ohlcv-5m-6c7cb41c78f4",
+      "source_manifest_sha256": "4345abfbc69845336fc8abe4a99e2763ea06b4897fa8ca02ee883457fde10375",
+      "dataset_manifest_sha256": "97c4b97c6898af64faa114b943af7dfae0eba6debe1f34fb241d2f995d4fc62f",
+      "dataset_fingerprint": "f965a8385bd584496fc4bfb54fc779acda9250d7290e8eff1b57ffbbb7e299c6"
+    },
+    "synthetic_source": {
+      "status": "PASS",
+      "test": "alpha_lab_service/tests/test_v2_recovery.py::test_cross_sectional_v2_service_emits_cs_report",
+      "timestamps": 8,
+      "symbols": ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"],
+      "rows": 40
+    }
+  },
+  "research_layer": {
+    "status": "PASS",
+    "time_series": {
+      "status": "EXPLORATORY",
+      "evaluation_steps": 8928,
+      "valid_rows": 8925,
+      "coverage_rate": 0.9996639784946236,
+      "minimum_required_coverage_rate": 0.8,
+      "ic": -0.03565283004793306,
+      "rank_ic": -0.04452576222422534,
+      "monthly": {
+        "2025-05": {
+          "ic": -0.03565283004793306,
+          "rank_ic": -0.04452576222422534
+        }
+      },
+      "yearly": {
+        "2025": {
+          "ic": -0.03565283004793306,
+          "rank_ic": -0.04452576222422534
+        }
+      },
+      "mean_absolute_exposure_change": 0.016176012314383394,
+      "cost_assumption_bps_per_side": 10.0,
+      "cost_diagnostic_is_assumption_only": true
+    },
+    "cross_sectional": {
+      "status": "PASS",
+      "test": "alpha_lab_service/tests/test_v2_recovery.py::test_cross_sectional_v2_service_emits_cs_report",
+      "descriptive_status": "EXPLORATORY",
+      "mean_cs_rank_ic": 1.0,
+      "effective_cross_sections": 8,
+      "asset_count_per_section": 5,
+      "quantile_groups_per_section": 5
+    },
+    "formal_inference_status": "BLOCKED"
+  },
+  "evidence_and_security_layer": {
+    "status": "PASS",
+    "source_code_is_stored_as_sha256_only_in_evidence": true,
+    "complete_only_evidence_publication": true,
+    "not_evaluable_is_persistable": true,
+    "append_only_replay_and_conflict_checks": true,
+    "unified_history_is_read_only": true,
+    "legacy_v1_v2_store_bytes_unchanged_by_history_query": true,
+    "history_configured_source_failures_are_explicit": true,
+    "formal_inference_fields_emitted": false,
+    "worker_network_and_filesystem_isolation": "PASS per PR-05 v2 container acceptance"
+  },
+  "recovery_parity": {
+    "worker_image": "sha256:ac09f79dc85832d1cbe09a0efc9a14f210552d0479aefdb4b3be87ef72f9dced",
+    "chunk_count": 18,
+    "chunk_plan_sha256": "fcc71a53e9013efd986ef6d6d3891ec9b8665ebc56ae89123cd73e79e22d9bb7",
+    "no_partial_evidence_after_forced_restart": true,
+    "stateful_output_hashes_match_after_restart": true,
+    "stateless_stateful_factor_values_match": true,
+    "real_acceptance_report_sha256": "dec6d6e80d07676f08ec549fe528460a994a2ac91b6599904ae339a423bcbf4c"
+  },
+  "verification": {
+    "source_code_head": "66c4101fc5",
+    "service_test_suite": {
+      "command": "ALPHA_LAB_WORKER_IMAGE=sha256:ac09f79dc85832d1cbe09a0efc9a14f210552d0479aefdb4b3be87ef72f9dced /home/von/workspace/venv/bin/python -m pytest alpha_lab_service/tests -q",
+      "result": "148 passed, 2 warnings, 120.77s"
+    },
+    "contract_test_suite": {
+      "command": "/home/von/workspace/venv/bin/python -m pytest alpha_lab_contracts/tests -q",
+      "result": "60 passed, 2 warnings, 2.51s"
+    },
+    "focused_ci_and_governance": {
+      "command": "/home/von/workspace/venv/bin/python -m pytest alpha_lab_service/tests/test_ci_protection.py -q",
+      "result": "6 passed, 2 warnings"
+    },
+    "governance_command": "/home/von/workspace/venv/bin/python -m alpha_lab_service.governance",
+    "governance_result": "Alpha Lab v1.4 governance, service v3, active core v1.2, and historical core v1.1: valid",
+    "diff_check": "git diff --check: PASS",
+    "real_data_acceptance_command": "/home/von/workspace/venv/bin/python -m alpha_lab_service.acceptance_v2 --archive /tmp/BTCUSDT-5m-2025-05.zip --checksum /tmp/BTCUSDT-5m-2025-05.zip.CHECKSUM --output-dir /tmp/pr06-ts-acceptance-final",
+    "synthetic_data_command": "/home/von/workspace/venv/bin/python -m pytest alpha_lab_service/tests/test_v2_recovery.py::test_cross_sectional_v2_service_emits_cs_report -q",
+    "history_read_only_command": "/home/von/workspace/venv/bin/python -m pytest alpha_lab_service/tests/test_history_v2.py -q",
+    "v11_frozen_manifest_sha256": "692eda36c07f9dfd113dc57d470f7db15507fc75321bc5a79bf5edf9ff9561c2"
+  },
+  "remaining_external_gates": [
+    "GitHub branch protection and required-check enforcement remain unverified because the connected integration cannot read those settings.",
+    "Production host identity separation and durable Data Maintainer permissions still require deployment evidence.",
+    "PR-07 end-to-end Agent request creation, coverage discovery, and secured execution remain in progress."
+  ]
+}
