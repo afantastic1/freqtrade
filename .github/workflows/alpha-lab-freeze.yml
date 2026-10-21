@@ -11,7 +11,15 @@ on:
       - "alpha_lab/**"
       - "alpha_lab_contracts/**"
       - "alpha_lab_service/**"
+      - "alpha_lab/freeze-manifest-core-v1.3.json"
+      - "alpha_lab/freeze-manifest-v1.6.json"
+      - "alpha_lab_local/**"
       - "containers/alpha-lab-factor-worker/**"
+      - "containers/alpha-lab-local-service/**"
+      - "deploy/alpha-lab-local/**"
+      - "scripts/alpha_lab_wsl_start.sh"
+      - "scripts/alpha_lab_wsl_stop.sh"
+      - "examples/opencode.alpha-lab.jsonc"
       - "scripts/alpha_lab_admission_gate.py"
       - ".github/CODEOWNERS"
       - ".github/workflows/alpha-lab-python-service.yml"
@@ -33,7 +41,15 @@ on:
       - "alpha_lab/**"
       - "alpha_lab_contracts/**"
       - "alpha_lab_service/**"
+      - "alpha_lab/freeze-manifest-core-v1.3.json"
+      - "alpha_lab/freeze-manifest-v1.6.json"
+      - "alpha_lab_local/**"
       - "containers/alpha-lab-factor-worker/**"
+      - "containers/alpha-lab-local-service/**"
+      - "deploy/alpha-lab-local/**"
+      - "scripts/alpha_lab_wsl_start.sh"
+      - "scripts/alpha_lab_wsl_stop.sh"
+      - "examples/opencode.alpha-lab.jsonc"
       - "scripts/alpha_lab_admission_gate.py"
       - ".github/CODEOWNERS"
       - ".github/workflows/alpha-lab-python-service.yml"
@@ -72,7 +88,7 @@ jobs:
           python -m pip install -e "./data_engineering[test]"
 
       - name: Check Python compilation
-        run: python -m compileall -q alpha_lab alpha_lab_contracts data_engineering
+        run: python -m compileall -q alpha_lab alpha_lab_contracts alpha_lab_local data_engineering
 
       - name: Run research tests
         run: |
@@ -102,6 +118,9 @@ jobs:
       - name: Statistical self-check
         run: python -m alpha_lab.stats.selfcheck
 
+      - name: Local Factory tests
+        run: python -m pytest -o addopts='' --confcutdir=alpha_lab_local -q alpha_lab_local/tests
+
   freeze:
     name: Frozen core verification
     runs-on: ubuntu-latest
@@ -124,5 +143,5 @@ jobs:
         env:
           UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/alpha-lab-governance-venv
         run: |
-          uv run --project alpha_lab_service --locked python -m alpha_lab.freeze --manifest alpha_lab/freeze-manifest-core-v1.2.json
+          uv run --project alpha_lab_service --locked python -m alpha_lab.freeze --manifest alpha_lab/freeze-manifest-core-v1.3.json
           uv run --project alpha_lab_service --locked python -m alpha_lab_service.governance

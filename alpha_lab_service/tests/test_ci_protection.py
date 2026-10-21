@@ -10,6 +10,11 @@ def test_owner_boundary_covers_service_worker_gate_workflows_and_manifests():
     owners = (ROOT / ".github/CODEOWNERS").read_text(encoding="utf-8")
     required = (
         "/alpha_lab_service/", "/containers/alpha-lab-factor-worker/",
+        "/alpha_lab_local/", "/containers/alpha-lab-local-service/",
+        "/deploy/alpha-lab-local/", "/scripts/alpha_lab_wsl_start.sh",
+        "/scripts/alpha_lab_wsl_stop.sh", "/examples/opencode.alpha-lab.jsonc",
+        "/alpha_lab/freeze-manifest-core-v1.3.json",
+        "/alpha_lab/freeze-manifest-v1.6.json",
         "/scripts/alpha_lab_admission_gate.py", "/.github/workflows/alpha-lab-freeze.yml",
         "/.github/workflows/alpha-lab-python-service.yml", "/alpha_lab/freeze-manifest-v1.3.json",
         "/alpha_lab_service/protocol-manifest-v2.json", "/alpha_lab_contracts/",
@@ -25,6 +30,11 @@ def test_ci_triggers_and_checks_all_service_security_boundaries():
     text = workflow.read_text(encoding="utf-8")
     for path in (
         "alpha_lab_service/**", "containers/alpha-lab-factor-worker/**",
+        "alpha_lab_local/**", "containers/alpha-lab-local-service/**",
+        "deploy/alpha-lab-local/**", "scripts/alpha_lab_wsl_start.sh",
+        "scripts/alpha_lab_wsl_stop.sh", "examples/opencode.alpha-lab.jsonc",
+        "alpha_lab/freeze-manifest-core-v1.3.json",
+        "alpha_lab/freeze-manifest-v1.6.json",
         "scripts/alpha_lab_admission_gate.py", ".github/CODEOWNERS",
         ".github/workflows/alpha-lab-python-service.yml", "alpha_lab/freeze-manifest-v1.3.json",
         "alpha_lab_service/protocol-manifest-v2.json", "alpha_lab_contracts/**",
@@ -40,12 +50,12 @@ def test_ci_triggers_and_checks_all_service_security_boundaries():
 
 
 def test_new_service_manifest_covers_its_verifier_worker_and_admission_gate():
-    manifest = ROOT / "alpha_lab_service/protocol-manifest-v4.json"
+    manifest = ROOT / "alpha_lab_service/protocol-manifest-v5.json"
     import json
     files = json.loads(manifest.read_text(encoding="utf-8"))["files"]
     assert not any(path.startswith("data_engineering/build/") for path in files)
     assert not any(".egg-info/" in path for path in files)
-    assert verify_manifest(ROOT, manifest, manifest_version="4.0-python-factor-service") == []
+    assert verify_manifest(ROOT, manifest, manifest_version="5.0-python-factor-service") == []
     expected = {
         "alpha_lab_service/manifest.py",
         "alpha_lab_service/governance.py",
@@ -78,6 +88,7 @@ def test_alpha_lab_contracts_are_covered_by_ci_and_codeowners():
     assert "/alpha_lab_service/protocol-manifest-v3.json" in owners
     assert "/alpha_lab_service/" in owners
     assert "/alpha_lab/freeze-manifest-v1.3.json" in owners
+    assert "/alpha_lab/freeze-manifest-core-v1.3.json" in owners
 
     import json
     protected = json.loads((ROOT / "alpha_lab_service/protected-files.json").read_text(encoding="utf-8"))
@@ -86,6 +97,11 @@ def test_alpha_lab_contracts_are_covered_by_ci_and_codeowners():
     assert "/alpha_lab_service/protocol-manifest-v2.json" in protected["required_owner_paths"]
     assert "/alpha_lab_service/protocol-manifest-v3.json" in protected["required_owner_paths"]
     assert "/alpha_lab_service/protocol-manifest-v4.json" in protected["required_owner_paths"]
+    assert "/alpha_lab_service/protocol-manifest-v5.json" in protected["required_owner_paths"]
+    assert "/alpha_lab/freeze-manifest-core-v1.3.json" in protected["required_owner_paths"]
+    assert "/alpha_lab/freeze-manifest-v1.6.json" in protected["required_owner_paths"]
+    assert "/alpha_lab_local/" in protected["required_owner_paths"]
+    assert "alpha_lab_local/**" in protected["required_ci_paths"]
     assert "alpha_lab_service/**" in protected["required_ci_paths"]
     assert "/data_engineering/" in protected["required_owner_paths"]
     assert "data_engineering/**" in protected["required_ci_paths"]
@@ -94,6 +110,7 @@ def test_alpha_lab_contracts_are_covered_by_ci_and_codeowners():
     service_text = (ROOT / ".github/workflows/alpha-lab-python-service.yml").read_text(encoding="utf-8")
     assert "alpha_lab_contracts/**" in freeze_text and "alpha_lab_contracts/tests/" in freeze_text
     assert "data_engineering/**" in freeze_text and "data_engineering/" in freeze_text
+    assert "alpha_lab/freeze-manifest-core-v1.3.json" in freeze_text
     for test_path in (
         "tests/test_data_engineering_catalog_v3.py",
         "tests/test_data_engineering_source_pipeline.py",
@@ -105,13 +122,14 @@ def test_alpha_lab_contracts_are_covered_by_ci_and_codeowners():
     assert "alpha_lab_contracts/**" in service_text
     assert '"alpha_lab_service/**"' in service_text
     assert '"data_engineering/**"' in service_text
+    assert "alpha_lab/freeze-manifest-core-v1.3.json" in service_text
 
 
-def test_active_governance_selects_v15_and_service_v4():
+def test_active_governance_selects_v16_and_service_v5():
     import json
     from alpha_lab_service import governance
 
-    assert governance.V15_GOVERNANCE.name == "freeze-manifest-v1.5.json"
-    assert governance.SERVICE_MANIFEST.name == "protocol-manifest-v4.json"
+    assert governance.V16_GOVERNANCE.name == "freeze-manifest-v1.6.json"
+    assert governance.SERVICE_MANIFEST.name == "protocol-manifest-v5.json"
     manifest = json.loads(governance.SERVICE_MANIFEST.read_text(encoding="utf-8"))
     assert "alpha_lab_contracts/research_request_v2.py" in manifest["files"]

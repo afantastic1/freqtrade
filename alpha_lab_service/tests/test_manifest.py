@@ -32,7 +32,7 @@ def test_service_manifest_detects_modified_and_untracked_protected_files(tmp_pat
 
 
 def test_service_manifest_detects_tampering_of_real_protected_source(tmp_path):
-    manifest_path = ROOT / "alpha_lab_service/protocol-manifest-v4.json"
+    manifest_path = ROOT / "alpha_lab_service/protocol-manifest-v5.json"
     document = json.loads(manifest_path.read_text(encoding="utf-8"))
     for relative in document["files"]:
         source = ROOT / relative
@@ -40,14 +40,14 @@ def test_service_manifest_detects_tampering_of_real_protected_source(tmp_path):
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, target)
 
-    copied_manifest = tmp_path / "alpha_lab_service/protocol-manifest-v4.json"
+    copied_manifest = tmp_path / "alpha_lab_service/protocol-manifest-v5.json"
     shutil.copyfile(manifest_path, copied_manifest)
-    assert verify_manifest(tmp_path, copied_manifest, manifest_version="4.0-python-factor-service") == []
+    assert verify_manifest(tmp_path, copied_manifest, manifest_version="5.0-python-factor-service") == []
 
     real_source_copy = tmp_path / "alpha_lab_service/protocol.py"
     real_source_copy.write_bytes(real_source_copy.read_bytes() + b"\n# tampered\n")
     assert "changed: alpha_lab_service/protocol.py" in verify_manifest(
-        tmp_path, copied_manifest, manifest_version="4.0-python-factor-service"
+        tmp_path, copied_manifest, manifest_version="5.0-python-factor-service"
     )
 
 
@@ -132,6 +132,26 @@ def test_service_v4_covers_v2_acceptance_artifacts():
     assert "docs/alpha_lab/python-factor-execution-protocol-v2.md" in active["files"]
     assert "docs/alpha_lab/python-factor-service-v2-acceptance.md" in active["files"]
     assert "docs/alpha_lab/python-factor-service-v2-acceptance.json" in active["files"]
+
+
+def test_service_v5_manifest_covers_local_factory_and_launch_boundary(tmp_path):
+    local = tmp_path / "alpha_lab_local"
+    local.mkdir()
+    (local / "factory.py").write_text("factory\n")
+    image = tmp_path / "containers/alpha-lab-local-service"
+    image.mkdir(parents=True)
+    (image / "Dockerfile").write_text("FROM python\n")
+    config = tmp_path / "deploy/alpha-lab-local"
+    config.mkdir(parents=True)
+    (config / "runtime.json").write_text("{}\n")
+
+    manifest = build_manifest(tmp_path, manifest_version="5.0-python-factor-service")
+
+    assert {
+        "alpha_lab_local/factory.py",
+        "containers/alpha-lab-local-service/Dockerfile",
+        "deploy/alpha-lab-local/runtime.json",
+    } <= set(manifest["files"])
 
 
 def test_v14_governance_tracks_active_freeze_policy():
