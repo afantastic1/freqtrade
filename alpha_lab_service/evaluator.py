@@ -56,27 +56,6 @@ def evaluate_factor_output(outputs: pd.Series, labels: pd.Series, *, baseline: p
 
 def evaluate_authorized_factor_output(outputs: pd.Series, run, *, identity: str) -> dict:
     """Evaluate only a complete factor projection against labels from the trusted build."""
-    expected = pd.MultiIndex.from_tuples(
-        [(stamp, symbol) for stamp in run.evaluation_timestamps for symbol in run.research_request.symbols],
-        names=["open_time", "symbol"],
-    )
-    if not isinstance(outputs, pd.Series) or not outputs.index.equals(expected):
-        raise ValueError("factor output must cover the complete authorized evaluation schedule in order")
-    frame = run.dataset.evaluator_labels.frame.copy()
-    time_column = "open_time" if "open_time" in frame else "decision_time"
-    if time_column not in frame or "label_value" not in frame:
-        raise ValueError("trusted evaluator labels lack timestamp or label_value")
-    if "symbol" not in frame:
-        if len(run.research_request.symbols) != 1:
-            raise ValueError("cross-sectional evaluator labels require symbols")
-        frame["symbol"] = run.research_request.symbols[0]
-    frame["open_time"] = pd.to_datetime(frame[time_column], utc=True, errors="raise")
-    frame["label_value"] = pd.to_numeric(frame["label_value"], errors="raise")
-    labels = frame.set_index(["open_time", "symbol"])["label_value"].astype(float)
-    labels.index = labels.index.set_names(["open_time", "symbol"])
-    if not labels.index.is_unique:
-        raise ValueError("trusted evaluator labels contain duplicate output keys")
-    labels = labels.reindex(expected)
-    if labels.isna().all():
-        raise ValueError("trusted evaluator labels do not overlap the authorized schedule")
-    return evaluate_factor_output(outputs, labels, baseline=None, identity=identity)
+    from alpha_lab_service.evaluation_v2 import evaluate_authorized_factor_output as evaluate_v2
+
+    return evaluate_v2(outputs, run, identity=identity)
