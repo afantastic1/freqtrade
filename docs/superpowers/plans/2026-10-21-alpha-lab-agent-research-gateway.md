@@ -78,17 +78,18 @@
 
 **Interfaces:**
 - Produces `AgentResearchGatewayV2(request_registry, coverage_gateway, factor_service, isolation_verifier, input_schema_registry)`.
-- Methods: `create_research_request_v2(payload)`, `submit_factor_v2(*, research_request_id, source, params, execution_mode, state_schema_id=None, state_schema_version=None)`, `run_factor_v2(task_id)`, `get_task_status(task_id)`, `get_task_report(task_id)`, and `get_history_v2(limit=100)`.
+- Methods: `create_research_request_v2(payload)`, `submit_factor_v2(*, research_request_id, source, params, execution_mode)`, `run_factor_v2(task_id)`, `get_task_status(task_id)`, `get_task_report(task_id)`, and `get_history_v2(limit=100)`.
 - Submission injects trusted Worker input schema identity from the authorized request mode/data-type mapping; callers cannot pick data schemas, worker identity, or evaluator identity.
+- Stateful submission uses the state schema bound in the same trusted input-schema mapping; callers cannot select or override a state schema.
 - The trusted isolation verifier returns a structured readiness result pinned to the configured immutable Worker image and all required host/container controls. Missing verifier or any failed/stale check is false.
 - Run checks the gate immediately before calling `ResearchServiceV2.run_factor_v2`; blocked response includes stable `EXECUTION_BLOCKED` and does not dispatch or create Evidence.
 - Task/report responses are bounded, JSON-safe, sanitized, and return `NOT_FOUND` or explicit unavailable status without exposing source paths.
 
-- [ ] **Step 1: Write failing tests** for request-to-task binding, caller scope widening rejection, source byte limit, schema injection rejection, task/report/history sanitization, complete-Evidence-only report, absent/malformed/stale isolation proof, no broker call/no Evidence on block, and valid trusted proof dispatch.
-- [ ] **Step 2: Run focused tests and confirm expected failures.**
-- [ ] **Step 3: Implement the gateway and default-deny verifier.** Configure runtime to construct the Agent gateway only from operator-owned dependencies; do not change legacy service execution behavior.
-- [ ] **Step 4: Run `pytest alpha_lab_service/tests/test_agent_gateway_v2.py -q`.**
-- [ ] **Step 5: Commit** as `feat(alpha-lab): authorize agent factor tasks`.
+- [x] **Step 1: Write failing tests** for request-to-task binding, caller scope widening rejection, source byte limit, schema injection rejection, task/report/history sanitization, complete-Evidence-only report, absent/malformed/stale isolation proof, no broker call/no Evidence on block, and valid trusted proof dispatch.
+- [x] **Step 2: Run focused tests and confirm expected failures.**
+- [x] **Step 3: Implement the gateway and default-deny verifier.** Configure runtime to construct the Agent gateway only from operator-owned dependencies; do not change legacy service execution behavior.
+- [x] **Step 4: Run `pytest alpha_lab_service/tests/test_agent_gateway_v2.py -q`.**
+- [x] **Step 5: Commit** as `feat(alpha-lab): authorize agent factor tasks`.
 
 ### Task 4: Separate Agent MCP profile
 

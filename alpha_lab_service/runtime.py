@@ -13,6 +13,7 @@ class ServiceBundle:
 
     v1_service: object
     v2_service: object | None
+    agent_gateway: object | None = None
 
 
 _V2_DEPENDENCIES = {
@@ -22,12 +23,14 @@ _V2_DEPENDENCIES = {
 _V2_OPTIONAL_DEPENDENCIES = {"history_stores"}
 
 
-def build_service_bundle(v1_service, *, v2_dependencies=None) -> ServiceBundle:
+def build_service_bundle(v1_service, *, v2_dependencies=None, agent_dependencies=None) -> ServiceBundle:
     """Build v2 only from a complete operator-owned dependency set."""
     required_v1 = ("submit_factor", "run_factor", "get_task")
     if any(not callable(getattr(v1_service, name, None)) for name in required_v1):
         raise ValueError("trusted v1 service is incomplete")
     if v2_dependencies is None:
+        if agent_dependencies is not None:
+            raise ValueError("complete trusted Agent dependencies require Factor Service v2")
         return ServiceBundle(v1_service, None)
     if not isinstance(v2_dependencies, dict):
         raise ValueError("complete trusted v2 dependency set is required")
@@ -74,7 +77,28 @@ def build_service_bundle(v1_service, *, v2_dependencies=None) -> ServiceBundle:
         raise ValueError("trusted evaluator identity is required")
     from alpha_lab_service.jobs_v2 import ResearchServiceV2
 
-    return ServiceBundle(v1_service, ResearchServiceV2(**deps))
+    v2_service = ResearchServiceV2(**deps)
+    if agent_dependencies is None:
+        return ServiceBundle(v1_service, v2_service)
+    if not isinstance(agent_dependencies, dict):
+        raise ValueError("complete trusted Agent dependencies are required")
+    agent_allowed = {"coverage_gateway", "input_schema_registry", "isolation_verifier"}
+    unknown_agent = set(agent_dependencies) - agent_allowed
+    if unknown_agent:
+        raise ValueError(f"unsupported trusted Agent dependency: {sorted(unknown_agent)[0]}")
+    missing_agent = {"coverage_gateway", "input_schema_registry", "isolation_verifier"} - set(agent_dependencies)
+    if missing_agent:
+        raise ValueError("complete trusted Agent dependencies are required")
+    from alpha_lab_service.agent_gateway_v2 import AgentResearchGatewayV2
+
+    agent_gateway = AgentResearchGatewayV2(
+        request_registry=deps["research_request_registry"],
+        coverage_gateway=agent_dependencies["coverage_gateway"],
+        factor_service=v2_service,
+        isolation_verifier=agent_dependencies["isolation_verifier"],
+        input_schema_registry=agent_dependencies["input_schema_registry"],
+    )
+    return ServiceBundle(v1_service, v2_service, agent_gateway)
 
 
 def load_service_factory(specification: str):
