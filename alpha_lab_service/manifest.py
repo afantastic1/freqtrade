@@ -17,7 +17,11 @@ SERVICE_FILES = (
     ".github/CODEOWNERS",
 )
 SERVICE_V2_FILES = SERVICE_FILES + ("alpha_lab_contracts/",)
-SERVICE_V3_FILES = SERVICE_V2_FILES + ("alpha_lab/", "docs/alpha_lab/dynamic_dataset_builder_acceptance.md")
+SERVICE_V3_FILES = SERVICE_V2_FILES + (
+    "alpha_lab/", "docs/alpha_lab/dynamic_dataset_builder_acceptance.md",
+    "docs/alpha_lab/python-factor-execution-protocol-v2.md",
+    "docs/alpha_lab/python-factor-service-v2-acceptance.md",
+)
 GOVERNANCE_FILES = (
     ".github/CODEOWNERS",
     ".github/workflows/alpha-lab-freeze.yml",

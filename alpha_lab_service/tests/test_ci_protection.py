@@ -60,6 +60,7 @@ def test_alpha_lab_contracts_are_covered_by_ci_and_codeowners():
     owners = (ROOT / ".github/CODEOWNERS").read_text(encoding="utf-8")
     assert "/alpha_lab_contracts/" in owners
     assert "/alpha_lab_service/protocol-manifest-v2.json" in owners
+    assert "/alpha_lab_service/protocol-manifest-v3.json" in owners
     assert "/alpha_lab/freeze-manifest-v1.3.json" in owners
 
     import json
@@ -67,11 +68,14 @@ def test_alpha_lab_contracts_are_covered_by_ci_and_codeowners():
     assert "/alpha_lab_contracts/" in protected["required_owner_paths"]
     assert "alpha_lab_contracts/**" in protected["required_ci_paths"]
     assert "/alpha_lab_service/protocol-manifest-v2.json" in protected["required_owner_paths"]
+    assert "/alpha_lab_service/protocol-manifest-v3.json" in protected["required_owner_paths"]
+    assert "alpha_lab_service/**" in protected["required_ci_paths"]
 
     freeze_text = (ROOT / ".github/workflows/alpha-lab-freeze.yml").read_text(encoding="utf-8")
     service_text = (ROOT / ".github/workflows/alpha-lab-python-service.yml").read_text(encoding="utf-8")
     assert "alpha_lab_contracts/**" in freeze_text and "alpha_lab_contracts/tests/" in freeze_text
     assert "alpha_lab_contracts/**" in service_text
+    assert '"alpha_lab_service/**"' in service_text
 
 
 def test_active_governance_selects_v14_and_service_v3():

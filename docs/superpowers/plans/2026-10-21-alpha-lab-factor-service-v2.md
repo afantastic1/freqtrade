@@ -162,11 +162,11 @@
 - Trusted factory constructs v2 from server-owned Campaign registry, DatasetBuilder, immutable Worker identity, evaluator adapter, BrokerClientV2, and separate Store; no caller-selected factory/profile is accepted.
 - Versioned governance manifest includes all new v2 service, worker, schema, tests, and acceptance artifacts. Frozen v1.1 manifest bytes remain identical.
 
-- [ ] **Step 1: Write failing tool/factory tests** for exact v2 tool schemas, v1 route parity, missing trusted v2 dependencies fail closed, and caller cannot select a factory, Store, image, or limits.
-- [ ] **Step 2: Run** `pytest alpha_lab_service/tests/test_mcp_v2_tools.py alpha_lab_service/tests/test_mcp_tools.py -q`; confirm v2 tools are absent.
-- [ ] **Step 3: Implement** additive MCP wiring, trusted factory creation, governance hashes/required paths, CODEOWNERS and CI coverage without rewriting frozen v1.1 artifacts.
-- [ ] **Step 4: Run** focused MCP, manifest, CI protection, full alpha_lab_service test suite, and check frozen v1.1 manifest hash against the recorded acceptance value.
-- [ ] **Step 5: Commit** as `feat(alpha-lab): expose factor service v2 tools`.
+- [x] **Step 1: Write failing tool/factory tests** for exact v2 tool schemas, v1 route parity, missing trusted v2 dependencies fail closed, and caller cannot select a factory, Store, image, or limits.
+- [x] **Step 2: Run** `pytest alpha_lab_service/tests/test_mcp_v2_tools.py alpha_lab_service/tests/test_mcp_tools.py -q`; confirmed v2 tools were absent before wiring.
+- [x] **Step 3: Implement** additive MCP wiring, trusted factory creation, governance hashes/required paths, CODEOWNERS and CI coverage without rewriting frozen v1.1 artifacts. Existing broad CODEOWNERS/CI patterns already covered v2; added assertions for the v3 manifest path.
+- [x] **Step 4: Run** focused MCP, manifest, CI protection, full alpha_lab_service test suite, and check frozen v1.1 manifest hash against the recorded acceptance value.
+- [x] **Step 5: Commit** as `feat(alpha-lab): expose factor service v2 tools`.
 
 ### Task 8: Release acceptance, actual-container boundaries, and documentation
 
