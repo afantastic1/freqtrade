@@ -57,7 +57,7 @@ def test_duplicate_submit_and_stateful_chunk_resume(tmp_path):
     first = research.submit_factor_v2(payload)
     assert research.submit_factor_v2(payload)["task_id"] == first["task_id"]
     result = asyncio.run(research.run_factor_v2(first["task_id"]))
-    assert result["status"] in {"DIAGNOSTIC", "EXPLORATORY"}, result
+    assert result["status"] in {"DIAGNOSTIC", "EXPLORATORY", "NOT_EVALUABLE"}, result
     assert len(broker.calls) == 3
     # The retry of chunk zero starts from its original state; chunk one receives
     # only the state committed by the successful chunk zero attempt.
@@ -65,6 +65,31 @@ def test_duplicate_submit_and_stateful_chunk_resume(tmp_path):
     assert broker.calls[1][1][0]["state"] is None
     assert broker.calls[2][1][0]["state"] == {"count": 1}
     assert research.get_task_v2(first["task_id"])["status"] == "COMPLETED"
+
+
+def test_v2_evidence_binds_campaign_dataset_source_params_and_evaluator(tmp_path):
+    research = service(tmp_path)
+    payload = request_payload() | {"params": {"window": 7}}
+    submitted = research.submit_factor_v2(payload)
+    result = asyncio.run(research.run_factor_v2(submitted["task_id"]))
+    evidence = research.store.get_evidence(submitted["request_hash"])["evidence"]
+    assert result["status"] == "NOT_EVALUABLE"
+    assert evidence["campaign"] == {
+        "campaign_id": "example_campaign", "policy_version": "1",
+        "campaign_policy_sha256": "041efb79ddf9b88a71ff071cbfb52f833420658ff888cf6b6d87bb5f0a7ef209",
+    }
+    assert len(evidence["research_request_sha256"]) == 64
+    assert evidence["mode"] == "time_series"
+    assert evidence["dataset_source_provenance"] == {"marker": "one"}
+    assert evidence["source_sha256"]
+    assert evidence["params"] == {"window": 7}
+    assert evidence["evaluator_version"] == "evaluator-v1"
+    assert evidence["formal_inference_status"] == "BLOCKED"
+    replay = asyncio.run(research.run_factor_v2(submitted["task_id"]))
+    assert replay["evidence_hash"] == result["evidence_hash"]
+    changed = dict(evidence, report={"status": "changed"})
+    with pytest.raises(ValueError, match="Evidence identity conflict"):
+        research.store.complete_with_evidence(task_id=submitted["task_id"], run_id=submitted["request_hash"], evidence=changed)
 
 
 def test_runtime_failure_is_blocked_and_never_publishes_evidence(tmp_path):
@@ -102,7 +127,7 @@ def test_process_restart_replays_uncommitted_chunk_from_checkpoint(tmp_path):
     with pytest.raises(asyncio.CancelledError):
         asyncio.run(research.run_factor_v2(submitted["task_id"]))
     result = asyncio.run(research.run_factor_v2(submitted["task_id"]))
-    assert result["status"] in {"DIAGNOSTIC", "EXPLORATORY"}
+    assert result["status"] in {"DIAGNOSTIC", "EXPLORATORY", "NOT_EVALUABLE"}
     chunks = research.store.get_chunks(submitted["task_id"])
     assert research.store.get_chunk(submitted["task_id"], chunks[0]["chunk_id"])["attempts"] == 1
     assert research.store.get_chunk(submitted["task_id"], chunks[1]["chunk_id"])["attempts"] == 2

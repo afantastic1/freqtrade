@@ -579,7 +579,7 @@ class ResearchStoreV2:
                 "evidence": json.loads(row["evidence_json"])}
 
     def complete_with_evidence(self, *, task_id: str, run_id: str, evidence: dict) -> str:
-        if evidence.get("status") not in {"EXPLORATORY", "DIAGNOSTIC"}:
+        if evidence.get("status") not in {"EXPLORATORY", "DIAGNOSTIC", "NOT_EVALUABLE"}:
             raise ValueError("v2 Evidence must remain descriptive")
         evidence_json = _canonical(evidence)
         if len(evidence_json.encode("utf-8")) > V2_LIMITS.max_total_output_bytes + 16 * 1024 * 1024:

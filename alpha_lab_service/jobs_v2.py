@@ -171,10 +171,27 @@ class ResearchServiceV2:
                 evidence = {
                     "status": report["status"], "protocol_version": "2.0",
                     "request_hash": run_id,
+                    "campaign": {
+                        "campaign_id": run.research_request.campaign_id,
+                        "policy_version": run.research_request.policy_version,
+                        "campaign_policy_sha256": run.campaign_policy_sha256,
+                    },
+                    "research_request_sha256": run.research_request.sha256(),
+                    "mode": run.research_request.mode,
                     "source_sha256": hashlib.sha256(factor_request.source.encode("utf-8")).hexdigest(),
+                    "params": factor_request.params,
+                    "execution_protocol": {
+                        "protocol_version": "2.0",
+                        "execution_mode": factor_request.execution_mode,
+                        "worker_input_schema_id": factor_request.worker_input_schema_id,
+                        "worker_input_schema_version": factor_request.worker_input_schema_version,
+                    },
                     "dataset_manifest_sha256": run.canonical_request_record["dataset_manifest_sha256"],
                     "dataset_fingerprint": run.canonical_request_record["dataset_fingerprint"],
-                    "worker_image": run.worker_image_digest, "evaluator_identity": run.evaluator_identity,
+                    "dataset_source_provenance": run.dataset.manifest.get("sources", run.dataset.manifest),
+                    "worker_image": run.worker_image_digest,
+                    "evaluator_identity": run.evaluator_identity,
+                    "evaluator_version": run.evaluator_identity,
                     "output_hashes": output_hashes,
                     "factor_values": [{"open_time": stamp.isoformat(), "symbol": symbol, "value": value}
                                       for stamp, symbol, value in rows],
