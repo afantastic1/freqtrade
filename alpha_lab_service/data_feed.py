@@ -114,3 +114,24 @@ def validate_worker_steps(steps: list[dict], *, symbols: Sequence[str], start, e
         if row_order != sorted(row_order):
             raise ValueError("Worker history must be sorted")
     return steps
+
+
+def validate_v2_chunk_timeline(timestamps: Sequence, *, start, end, max_steps: int = 512) -> tuple[pd.Timestamp, ...]:
+    """Validate one deterministic v2 chunk's ordered evaluation timestamps."""
+    start_time, end_time = pd.Timestamp(start), pd.Timestamp(end)
+    if start_time.tzinfo is None or end_time.tzinfo is None or start_time >= end_time:
+        raise ValueError("research window must be valid and timezone-aware")
+    if type(max_steps) is not int or not 1 <= max_steps <= 512:
+        raise ValueError("v2 chunk step limit must be between 1 and 512")
+    normalized = []
+    for value in timestamps:
+        stamp = pd.Timestamp(value)
+        if stamp.tzinfo is None:
+            raise ValueError("v2 chunk timestamps must be timezone-aware")
+        normalized.append(stamp.tz_convert("UTC"))
+    if not normalized or len(normalized) > max_steps:
+        raise ValueError("v2 chunk exceeds its evaluation step limit")
+    start_time, end_time = start_time.tz_convert("UTC"), end_time.tz_convert("UTC")
+    if normalized != sorted(set(normalized)) or any(not start_time <= stamp < end_time for stamp in normalized):
+        raise ValueError("v2 chunk timestamps must be unique, ordered, and within the authorized window")
+    return tuple(normalized)
