@@ -93,6 +93,14 @@ def test_chunk_frames_use_point_in_time_history_and_read_only_warmup():
     assert len(first_frames[2]["history"]) <= 2
 
 
+def test_single_symbol_time_series_restores_trusted_symbol_on_wire():
+    run = make_run(count=2)
+    worker = WorkerInputV2(run.dataset.worker_input.frame.drop(columns=["symbol"]), ("available_time",))
+    run = replace(run, dataset=replace(run.dataset, worker_input=worker))
+    frames = build_chunk_frames(run, plan_chunks(run).chunks[0])
+    assert all(row["symbol"] == "BTCUSDT" for row in frames[2]["history"])
+
+
 def test_chunk_builder_rejects_serialized_input_over_per_chunk_limit():
     run = make_run(512, lookback=500, byte_bomb=True)
     symbol = "B" * 40_000

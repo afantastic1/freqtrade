@@ -180,11 +180,11 @@
 - Acceptance runner uses a trusted Campaign and real one-month BTC 5m dataset, target 8,928 as-of evaluations (or the exact authorized calendar count), and reports resolved manifest/fingerprint, chunk plan, hashes, runtime, and final descriptive Evidence.
 - Container tests exercise actual pinned Worker image for disabled network, unavailable Docker socket, protected host path/data nonaccess, memory/CPU/PID/tmp/time limits, malformed frames, and missing runtime behavior.
 
-- [ ] **Step 1: Add failing acceptance assertions** for complete 5m month across chunks, stateless and stateful sequential parity, forced restart, no partial Evidence, actual-container denial tests, v1 behavior, and formal inference `BLOCKED`.
-- [ ] **Step 2: Run** v2 service unit/integration tests; run actual-container acceptance only when the configured immutable digest and isolation runtime are available, otherwise verify v2 returns `EXECUTION_BLOCKED` and record the release gate as unmet.
-- [ ] **Step 3: Implement** concise protocol and acceptance docs with exact commands, identities, limits, and results; keep formal inference status explicitly blocked.
-- [ ] **Step 4: Run** the complete Alpha Lab service/contracts acceptance suite, repeat the real BTC month, compare output/checkpoint hashes across restart, and verify the frozen v1.1 bytes.
-- [ ] **Step 5: Commit** as `docs(alpha-lab): record factor service v2 acceptance`.
+- [x] **Step 1: Add failing acceptance assertions** for complete 5m month across chunks, stateless and stateful sequential parity, forced restart, no partial Evidence, actual-container denial tests, v1 behavior, and formal inference `BLOCKED`.
+- [x] **Step 2: Run** v2 service unit/integration tests and actual-container acceptance against the committed immutable digest.
+- [x] **Step 3: Implement** concise protocol and acceptance docs with exact commands, identities, limits, and results; keep formal inference status explicitly blocked.
+- [x] **Step 4: Run** the complete Alpha Lab service/contracts acceptance suite, repeat the real BTC month, compare output/checkpoint hashes across restart, and verify the frozen v1.1 bytes.
+- [x] **Step 5: Commit** as `docs(alpha-lab): record factor service v2 acceptance`.
 
 ## Plan self-review
 

@@ -5,7 +5,7 @@
     ".github/workflows/alpha-lab-python-service.yml": "a9f4ee28b87d15034a2827a67086aee6d726fb18f59225ae355cb01c6f9a217e",
     "alpha_lab/freeze-manifest-core-v1.2.json": "6fdd325a222556b803bd4b1da86eaa8e427411e7ba5b33835c5e0e711bfb5604",
     "alpha_lab_service/governance.py": "fa4f24323f0495219ffeca6e4e2650581db4683dedeb1dfb959fc81796ab292d",
-    "alpha_lab_service/manifest.py": "34d731603aee92df06f1e447970ff353ed20eb82e2a8e537620563c9c04bfe62",
+    "alpha_lab_service/manifest.py": "03088580b8427d1970402b75145b86fde5e4348c0de7105711c428ecd794abb1",
     "alpha_lab_service/protected-files.json": "43886ebc137eba2776dad6a600abcc22e6935dfc7a7eaefe20440674fe6d1104",
     "scripts/alpha_lab_admission_gate.py": "04fc6f1564a0ed32ec73a06adbe688b6dd2c514a59c27d22f2749e005d464332"
   },

@@ -21,6 +21,7 @@ SERVICE_V3_FILES = SERVICE_V2_FILES + (
     "alpha_lab/", "docs/alpha_lab/dynamic_dataset_builder_acceptance.md",
     "docs/alpha_lab/python-factor-execution-protocol-v2.md",
     "docs/alpha_lab/python-factor-service-v2-acceptance.md",
+    "docs/alpha_lab/python-factor-service-v2-acceptance.json",
 )
 GOVERNANCE_FILES = (
     ".github/CODEOWNERS",

@@ -68,6 +68,11 @@ def _row_records(frame: pd.DataFrame, *, run: AuthorizedFactorRunV2, cutoff: pd.
     rows = []
     for row in frame.to_dict(orient="records"):
         normalized = {name: _json_value(value) for name, value in row.items()}
+        if "symbol" not in normalized and request.mode == "time_series" and len(request.symbols) == 1:
+            # DatasetBuilder's time-series Worker product is scoped to one
+            # trusted symbol and omits a redundant column; restore that identity
+            # from the authorized request before producing wire frames.
+            normalized["symbol"] = request.symbols[0]
         if not {"open_time", "available_time", "symbol"}.issubset(normalized):
             raise ValueError("PIT Worker rows require open_time, available_time, and symbol")
         opened, available = pd.Timestamp(normalized["open_time"]), pd.Timestamp(normalized["available_time"])

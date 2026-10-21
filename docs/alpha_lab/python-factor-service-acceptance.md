@@ -1,5 +1,11 @@
 # Python Factor Research Service — Phase 1 acceptance
 
+> The additive Factor Service v2 boundary, protocol, and real-data acceptance
+> are recorded in [Python Factor Execution Protocol v2](python-factor-execution-protocol-v2.md),
+> [v2 acceptance report](python-factor-service-v2-acceptance.md), and the
+> [machine-readable v2 results](python-factor-service-v2-acceptance.json).
+> Formal inference remains `BLOCKED`.
+
 ## Current state
 
 **Service status: `BLOCKED` for general Agent use.** The checked-in service

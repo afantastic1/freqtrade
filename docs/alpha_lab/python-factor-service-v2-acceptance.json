@@ -1,0 +1,103 @@
+{
+  "archive_sha256": "073da284f178e72777abbfbcf79faa99fcf77bd69c4a678938abbf6cd7d14f5b",
+  "archive_url": "https://data.binance.vision/data/futures/um/monthly/klines/BTCUSDT/5m/BTCUSDT-5m-2025-05.zip",
+  "chunk_count": 18,
+  "chunk_input_hashes": [
+    "36519121e304f99eec2ddcdc7d56a42f27359e9f9fbb268376cb008061869dbd",
+    "1c7bb65fde2d0478e19cc5c49302138caf9aa81f1b1cdeebdb8d8caf87993ec2",
+    "0190c13ca0ea13d321c416f82b2c0de14c65e67b0f71f7de1616faefd1e6e510",
+    "33432d598ca8f5608d69a28a3792d6d716f652d4ac73237f026cf2149eaf1153",
+    "36099cdbc7bde1018e59f262623e609d2e6cb159a77a792f6be2ff7e328184f4",
+    "bd0fe17516295121940d94318e2c5ac19a1bbdb14fb8f717ae441e41a2d16d47",
+    "99660808bcce76635616557313aa725740b0764ca0af89a2fa505c670bc73db9",
+    "a9b92d43985b3c8c4ad868b3819dae67bbd593ff727355eb53329b7f4b38f46f",
+    "da9293f705e58eba4626c6e1146551c62e9670c392a035b13dadeb2c69b85b5f",
+    "83590fbfe20c2c440e1f042d4232fb65ad9f926390a69e4ccf95fa54e060474a",
+    "5ee9492eb698ddcbf8912fcc94b0ac3ace611e5beef5a27ac776d48a4f36ca5c",
+    "eb51e4ddd09b06265c921f454d5544e424eef79c31f42f59af006db8d1e982bf",
+    "cf9cd25fea1a74cc18ebc42f1832837e000b3515cfbaff896273aec44b8a4a6c",
+    "ee52d45ac9e83ffc6acb41f55e22c2deba76d4d7183797835ae9029910852b74",
+    "045b34fdd92a20549c8233420a4294991931922909564a4cb115901cb89b4c6d",
+    "fc1d2d058a745773caaefcad0899defccf9ff8577f41a65446d59bafcf113a61",
+    "3be0de172f73e8e9b59b3b11e58bc31fdacf042ace29fb514e1029f25885d7ba",
+    "0975e1c15ddc58b408551af900d54999e19bd1c8a6f4d94b5b614769bb48d765"
+  ],
+  "chunk_plan_hash": "fcc71a53e9013efd986ef6d6d3891ec9b8665ebc56ae89123cd73e79e22d9bb7",
+  "dataset_fingerprint": "f965a8385bd584496fc4bfb54fc779acda9250d7290e8eff1b57ffbbb7e299c6",
+  "dataset_manifest_sha256": "97c4b97c6898af64faa114b943af7dfae0eba6debe1f34fb241d2f995d4fc62f",
+  "evaluation_steps": 8928,
+  "formal_inference_status": "BLOCKED",
+  "no_partial_evidence_after_forced_restart": true,
+  "protocol_version": "2.0",
+  "registered_dataset_id": "binance-futures-btc-ohlcv-5m-6c7cb41c78f4",
+  "registered_manifest_sha256": "4345abfbc69845336fc8abe4a99e2763ea06b4897fa8ca02ee883457fde10375",
+  "report": {
+    "identity": "bb667256c95a834db713b0f8d583ae86b1fd2e597b683e3d3a08c73dbfbca463",
+    "metrics": {
+      "coverage": {
+        "available_sections": 8928,
+        "evaluated_sections": 0,
+        "valid_rows": 8925
+      },
+      "effective_cross_sections": 0,
+      "mean_cs_ic": null,
+      "mean_cs_rank_ic": null,
+      "stability": {
+        "monthly": {},
+        "yearly": {}
+      }
+    },
+    "status": "DIAGNOSTIC"
+  },
+  "runtime_seconds": {
+    "stateful_resume_phase": 123.40382823906839,
+    "stateful_sequential": 127.54293904197402,
+    "stateless": 76.78125545498915
+  },
+  "stateful_checkpoint_hashes": [
+    "eea3ab152b85b35537d971f901591a5acbfd78ade5c6ce862a337e734c0d59a5",
+    "c6f8be51edfd88fea564a53e7cc4fb7e89168c2edd761ec82726652a6809c72b",
+    "eb595f6bbd5c28574167be0997ee2948fc9c778425936e1d8face44be4b4faf8",
+    "3d88fb9c4b7af178ad9d6fa99217c487b9dedbbacefc9d243dc919f4a4a641d9",
+    "6878f9a9bba998f3186fd3b914eb0de0989e06dd7d563ca51236af4be9e0f8b7",
+    "7ef2842cd907ff6483c55f51d592f364801de6b2b5e1c0cb8a0b0dbaa8d9dff9",
+    "52dc2bdbffbf89e02eeaf7e91be7c79bf95437c1eab6f60ef309e59b71982c62",
+    "affeeaf2d0782fdfec6e4c1c30bd0987a5e709584e473567326139396ecb755c",
+    "aa430ab28bc4257973fd02dd5b88feb08b6358acd6f4092907efdf41efd168fe",
+    "b6f75cd500705453cb5424a8c6d74f62347e2a25b392e9b0e6d4b1ed5b747cc4",
+    "71180f51a4101a198e41cda045aebed65f75ef199eba2e60619b5fa620cc35cc",
+    "f2e79adf4fb875e4387a68358c8e757da7421ddbe729573aeb07949c9a9f60e4",
+    "7537c6c3a52b32a047218efa2a70bb8af3b08ce3b05369f10b44327e3be17f40",
+    "fe6b8d287815834684d77f40e4a8f381378b90fe0f298d8aca69274fd3e0fccd",
+    "a1254f7ff596881801e75157313a93230f448b278dc7f59703be493131b5354e",
+    "35d03ac1736c34e9c8562a586a29876b8cfb92d0f0c5e7fa58010ce56461738d",
+    "70aaf96efe3ad694775753db117e94b6c3f6b15673ea744fe9a53949c1a8c4ed",
+    "313bbe17133f0a7f9bbdbd9aaa2a6b273c33d52e9fe48c939789744c6e15e8e1"
+  ],
+  "stateful_evidence_hash": "2cc72e4247e2cd7d570179b37b2081a41d7d3938a0e49b4630fa05e26baac06d",
+  "stateful_output_hashes": [
+    "72d89cca0105fa12a082c6ffd27993e721070a6863839f4ff1d6664c44479e95",
+    "b58b22a9db48fbec6a63e89d7015e5b8e83c5d2c9cc7b4469c21f2d4415a5a5b",
+    "6871c14cfe780ba9bbe67982a3c0c09e2d37883db40c1b1d3d3284189943f9d1",
+    "2319cd3a8890680e9a20a3e4f7975b9b5fde35943e924eb0ce9f3665e339d958",
+    "23bbe5824307865936e7952bb469dd222fb00c4efade5e87c1ed8a6d088f619b",
+    "c4f9185e7a5e199f166d2ae54c33df97bb4e439c1e736177d6391879328bfda7",
+    "01c555166878519be921f24889443830f03b8a05f92825468a628b37cf3a225b",
+    "bd3fddadd8d2f9af8f62993304e1f451dfb3f36a172dca69dc9edfbe505a3523",
+    "3f58946436c1209a75cb1abbfa5e7e6bd021cc73feaa4e8d17a872f8388eb087",
+    "55e899c7ce0ed19d48ce0be5715eff3cc9fd4b47f5a58206f4010a5a5ddd2b87",
+    "1f3eb90efd95d191c1bcd081e08de9c7e4da4dec2bb0e7068ac22f30ad574f42",
+    "f371b7e75897b5c2580e2f739c95e2bf50b3149dd8fb6f5eac066f5679a3a47a",
+    "3269ea07d91f4b053be13d832fb7abb644861c95d88ab2654db6b9fea7e82215",
+    "63e80355766b00b12096ad135ddefa35d00822edca5aa290d02be8b515fb8225",
+    "e6b4c3e5f00efa44f67f712952ddf6aa5826d93ab747feb98ed3a396a01a91d6",
+    "b21f30ae2102a896fd2968a175102e4b6fa838d9672eb73a4b6893b34a25e59d",
+    "50901733d477d4fb19b77e7817748bb261e50aeb2f936adf55d1e6c42b05bb00",
+    "0c7e7e42410460c53bca2f85a6024f247d0dc9f1dd97b903efdb56749f6b598d"
+  ],
+  "stateful_output_hashes_match_after_restart": true,
+  "stateless_evidence_hash": "4e4feca61118229b3e8ab4fc44b00abbd4e1c621f7f8937dff175f4bd35798a9",
+  "stateless_stateful_factor_values_match": true,
+  "status": "PASS",
+  "worker_image": "sha256:ac09f79dc85832d1cbe09a0efc9a14f210552d0479aefdb4b3be87ef72f9dced"
+}
