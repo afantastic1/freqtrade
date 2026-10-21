@@ -1,4 +1,4 @@
-"""Active v1.4 integrity gate: historical and active core plus current governance and service."""
+"""Active v1.5 integrity gate: historical and active core plus current governance and service."""
 
 from __future__ import annotations
 
@@ -14,8 +14,8 @@ from alpha_lab_service.manifest import verify_manifest
 ROOT = Path(__file__).resolve().parents[1]
 V11_MANIFEST = ROOT / "alpha_lab/freeze-manifest-v1.1.json"
 CORE_V12_MANIFEST = ROOT / "alpha_lab/freeze-manifest-core-v1.2.json"
-V14_GOVERNANCE = ROOT / "alpha_lab/freeze-manifest-v1.4.json"
-SERVICE_MANIFEST = ROOT / "alpha_lab_service/protocol-manifest-v3.json"
+V15_GOVERNANCE = ROOT / "alpha_lab/freeze-manifest-v1.5.json"
+SERVICE_MANIFEST = ROOT / "alpha_lab_service/protocol-manifest-v4.json"
 REPLACED_BOUNDARY = {".github/CODEOWNERS", ".github/workflows/alpha-lab-freeze.yml"}
 
 
@@ -42,8 +42,8 @@ def verify_v11_core() -> list[str]:
 def verify_all() -> list[str]:
     errors = verify_v11_core()
     errors.extend(f"active core v1.2 {item}" for item in verify_core_manifest(ROOT, CORE_V12_MANIFEST))
-    errors.extend(f"v1.4 governance {item}" for item in verify_manifest(ROOT, V14_GOVERNANCE, governance=True, manifest_version="1.4-governance"))
-    errors.extend(f"Python service v3 {item}" for item in verify_manifest(ROOT, SERVICE_MANIFEST, manifest_version="3.0-python-factor-service"))
+    errors.extend(f"v1.5 governance {item}" for item in verify_manifest(ROOT, V15_GOVERNANCE, governance=True, manifest_version="1.5-governance"))
+    errors.extend(f"Python service v4 {item}" for item in verify_manifest(ROOT, SERVICE_MANIFEST, manifest_version="4.0-python-factor-service"))
     return errors
 
 
@@ -52,7 +52,7 @@ def main() -> int:
     for error in errors:
         print(error)
     if not errors:
-        print("Alpha Lab v1.4 governance, service v3, active core v1.2, and historical core v1.1: valid")
+        print("Alpha Lab v1.5 governance, service v4, active core v1.2, and historical core v1.1: valid")
     return 1 if errors else 0
 
 

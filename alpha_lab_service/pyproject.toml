@@ -13,7 +13,10 @@ dependencies = [
 ]
 
 [dependency-groups]
-test = ["pytest==9.1.1", "pytest-xdist==3.8.0"]
+test = ["freqtrade", "pytest==9.1.1", "pytest-asyncio==1.4.0", "pytest-xdist==3.8.0"]
 
 [tool.uv]
 package = false
+
+[tool.uv.sources]
+freqtrade = { path = "..", editable = true }
