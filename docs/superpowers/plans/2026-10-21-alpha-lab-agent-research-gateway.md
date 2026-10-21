@@ -102,11 +102,11 @@
 - Produces `create_agent_mcp_server(gateway, *, bearer_token, host, port)` exposing exactly `get_data_coverage`, `create_research_request_v2`, `submit_factor_v2`, `run_factor_v2`, `get_task_status`, `get_task_report`, and `get_history_v2`.
 - Agent profile registers no v1 tools, `append_decision`, raw Catalog mutation, or arbitrary v2 dependency injection. Existing `create_mcp_server` remains backward compatible.
 
-- [ ] **Step 1: Write failing tool registration/schema tests** that assert exactly the allowed seven names, strict tool arguments without path/root/policy/proof fields, bearer middleware, and unchanged legacy server registrations.
-- [ ] **Step 2: Run the focused MCP tests and confirm profile creation fails.**
-- [ ] **Step 3: Add the separate MCP constructor** and stable JSON-safe error mapping for authorization, validation, missing identifiers, unavailable stores, and blocked execution.
-- [ ] **Step 4: Run `pytest alpha_lab_service/tests/test_agent_mcp_profile_v2.py alpha_lab_service/tests/test_mcp_v2_tools.py -q`.**
-- [ ] **Step 5: Commit** as `feat(alpha-lab): expose restricted agent mcp profile`.
+- [x] **Step 1: Write failing tool registration/schema tests** that assert exactly the allowed seven names, strict tool arguments without path/root/policy/proof fields, bearer middleware, and unchanged legacy server registrations.
+- [x] **Step 2: Run the focused MCP tests and confirm profile creation fails.**
+- [x] **Step 3: Add the separate MCP constructor** and stable JSON-safe error mapping for authorization, validation, missing identifiers, unavailable stores, and blocked execution.
+- [x] **Step 4: Run `pytest alpha_lab_service/tests/test_agent_mcp_profile_v2.py alpha_lab_service/tests/test_mcp_v2_tools.py -q`.**
+- [x] **Step 5: Commit** as `feat(alpha-lab): expose restricted agent mcp profile`.
 
 ### Task 5: Acceptance, governance, and end-to-end evidence
 
