@@ -1,0 +1,16 @@
+{
+  "files": {
+    ".github/CODEOWNERS": "66440dc09549ce4d9ea1ecd0c5234b1c17ea7fcce49b55ef9bb31aebafd3fee5",
+    ".github/workflows/alpha-lab-freeze.yml": "484c67f2ba6987f03370bb3a4bbc3e97670af83c068c19e92a7da29cb5c561f2",
+    ".github/workflows/alpha-lab-python-service.yml": "15f044100e98b6566a9c8f06db9a0aa930d9663243321ce3221665811bb16599",
+    "alpha_lab/freeze-manifest-core-v1.2.json": "5f9dee2fabaee7155af332c960f7927bb257cccb6662ccb3dee157a576714696",
+    "alpha_lab_service/governance.py": "f0a6fa267e856be5406963ba27457451dbd21a404f4f168520523b9497d7584c",
+    "alpha_lab_service/manifest.py": "60ed35e22fe4d35f45700e60d224dcf2b60d27f79c7d768714fc32f58945a1e9",
+    "alpha_lab_service/protected-files.json": "858fbb2e8466a9d4c873e95f842380e6ba957be6ea062e864d816e1e775703e0",
+    "alpha_lab_service/protocol-manifest-v4.json": "ea3ac6a0f0e942b84228ae389f28e15c49ee174e2415111144cf47ac8b6e56b8",
+    "scripts/alpha_lab_admission_gate.py": "04fc6f1564a0ed32ec73a06adbe688b6dd2c514a59c27d22f2749e005d464332"
+  },
+  "hash": "sha256",
+  "kind": "governance-boundary",
+  "manifest_version": "1.5-governance"
+}

@@ -139,7 +139,9 @@ def parse_kline_zip(zip_path: Path, *, month: str, timeframe: str):
         raise ValueError("archive has K-line open times outside requested calendar month")
     if bool(dates.duplicated().any()) or not dates.is_monotonic_increasing:
         raise ValueError("duplicate or out-of-order K-line open times")
-    ticks_ns = dates.astype("int64")
+    # pandas may infer datetime64[ms] (notably with pandas 3), so normalize
+    # before interpreting the integer representation as nanoseconds.
+    ticks_ns = dates.dt.as_unit("ns").astype("int64")
     if bool((ticks_ns % (TIMEFRAME_SECONDS[timeframe] * 1_000_000_000) != 0).any()):
         raise ValueError("misaligned K-line timestamps")
     result = pd.DataFrame({"date": dates})
