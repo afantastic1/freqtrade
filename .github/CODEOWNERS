@@ -1,6 +1,7 @@
 /alpha_lab/ @afantastic1
 /alpha_lab_service/ @afantastic1
 /alpha_lab_contracts/ @afantastic1
+/data_engineering/ @afantastic1
 /containers/alpha-lab-factor-worker/ @afantastic1
 /scripts/alpha_lab_admission_gate.py @afantastic1
 /.github/CODEOWNERS @afantastic1

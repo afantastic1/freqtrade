@@ -14,6 +14,7 @@ def test_owner_boundary_covers_service_worker_gate_workflows_and_manifests():
         "/.github/workflows/alpha-lab-python-service.yml", "/alpha_lab/freeze-manifest-v1.3.json",
         "/alpha_lab_service/protocol-manifest-v2.json", "/alpha_lab_contracts/",
         "/docs/alpha_lab/",
+        "/data_engineering/",
     )
     assert all(path in owners for path in required)
 
@@ -30,6 +31,7 @@ def test_ci_triggers_and_checks_all_service_security_boundaries():
         "docs/alpha_lab/python-factor-*.md",
         "docs/alpha_lab/unified-descriptive-evidence-acceptance.*",
         "docs/alpha_lab/agent-research-gateway-acceptance.*",
+        "data_engineering/**",
     ):
         assert path in text
     assert "test_worker_container.py" in text
@@ -58,6 +60,9 @@ def test_new_service_manifest_covers_its_verifier_worker_and_admission_gate():
     assert "alpha_lab_service/acceptance_agent_v2.py" in files
     assert "alpha_lab_service/tests/test_acceptance_agent_v2.py" in files
     assert "docs/alpha_lab/agent-research-gateway-acceptance.md" in files
+    assert "data_engineering/catalog_v3.py" in files
+    assert "data_engineering/sources/binance_vision.py" in files
+    assert "data_engineering/quality/contracts.py" in files
 
 
 def test_v12_governance_keeps_every_v11_frozen_core_hash_valid():
@@ -78,12 +83,16 @@ def test_alpha_lab_contracts_are_covered_by_ci_and_codeowners():
     assert "/alpha_lab_service/protocol-manifest-v2.json" in protected["required_owner_paths"]
     assert "/alpha_lab_service/protocol-manifest-v3.json" in protected["required_owner_paths"]
     assert "alpha_lab_service/**" in protected["required_ci_paths"]
+    assert "/data_engineering/" in protected["required_owner_paths"]
+    assert "data_engineering/**" in protected["required_ci_paths"]
 
     freeze_text = (ROOT / ".github/workflows/alpha-lab-freeze.yml").read_text(encoding="utf-8")
     service_text = (ROOT / ".github/workflows/alpha-lab-python-service.yml").read_text(encoding="utf-8")
     assert "alpha_lab_contracts/**" in freeze_text and "alpha_lab_contracts/tests/" in freeze_text
+    assert "data_engineering/**" in freeze_text and "data_engineering/" in freeze_text
     assert "alpha_lab_contracts/**" in service_text
     assert '"alpha_lab_service/**"' in service_text
+    assert '"data_engineering/**"' in service_text
 
 
 def test_active_governance_selects_v14_and_service_v3():

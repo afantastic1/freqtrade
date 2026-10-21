@@ -1,7 +1,7 @@
 {
   "engine_version": "1.1.0-rc1",
   "files": {
-    ".github/CODEOWNERS": "799ffde543f7d4fefcdc9c76bebfa3d183d2cec8c23b6fb4200c0b2c3d7456d3",
+    ".github/CODEOWNERS": "66440dc09549ce4d9ea1ecd0c5234b1c17ea7fcce49b55ef9bb31aebafd3fee5",
     ".github/workflows/alpha-lab-freeze.yml": "6a8cbc9f16d4272fb653d80b682a2c656e51708ed426007edb42f71ee0f0015b",
     ".opencode/agents/alpha-researcher.md": "b9886b5d8ea95fe84fd4d2d0553642f20becd434f514fffa2bd88e8757a5fa74",
     ".opencode/skills/alpha-research/SKILL.md": "8f077794dd06aac832962e252fee786868de92480d81b2e8ff38b7cce656545c",

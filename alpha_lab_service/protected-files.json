@@ -3,6 +3,7 @@
   "required_owner_paths": [
     "/alpha_lab_service/",
     "/alpha_lab_contracts/",
+    "/data_engineering/",
     "/containers/alpha-lab-factor-worker/",
     "/scripts/alpha_lab_admission_gate.py",
     "/.github/CODEOWNERS",
@@ -18,6 +19,7 @@
   "required_ci_paths": [
     "alpha_lab_service/**",
     "alpha_lab_contracts/**",
+    "data_engineering/**",
     "containers/alpha-lab-factor-worker/**",
     "scripts/alpha_lab_admission_gate.py",
     ".github/CODEOWNERS",
