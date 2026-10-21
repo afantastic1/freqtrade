@@ -41,6 +41,10 @@ def test_ci_triggers_and_checks_all_service_security_boundaries():
 
 def test_new_service_manifest_covers_its_verifier_worker_and_admission_gate():
     manifest = ROOT / "alpha_lab_service/protocol-manifest-v3.json"
+    import json
+    files = json.loads(manifest.read_text(encoding="utf-8"))["files"]
+    assert not any(path.startswith("data_engineering/build/") for path in files)
+    assert not any(".egg-info/" in path for path in files)
     assert verify_manifest(ROOT, manifest, manifest_version="3.0-python-factor-service") == []
     expected = {
         "alpha_lab_service/manifest.py",
@@ -53,8 +57,6 @@ def test_new_service_manifest_covers_its_verifier_worker_and_admission_gate():
         "alpha_lab_contracts/research_request_v2.py",
         "alpha_lab/data/schemas/availability-rule-v1.schema.json",
     }
-    import json
-    files = json.loads(manifest.read_text(encoding="utf-8"))["files"]
     assert expected <= set(files)
     assert "docs/alpha_lab/unified-descriptive-evidence-acceptance.md" in files
     assert "alpha_lab_service/acceptance_agent_v2.py" in files
@@ -90,6 +92,14 @@ def test_alpha_lab_contracts_are_covered_by_ci_and_codeowners():
     service_text = (ROOT / ".github/workflows/alpha-lab-python-service.yml").read_text(encoding="utf-8")
     assert "alpha_lab_contracts/**" in freeze_text and "alpha_lab_contracts/tests/" in freeze_text
     assert "data_engineering/**" in freeze_text and "data_engineering/" in freeze_text
+    for test_path in (
+        "tests/test_data_engineering_catalog_v3.py",
+        "tests/test_data_engineering_source_pipeline.py",
+        "tests/test_data_engineering_source_publish.py",
+        "tests/test_data_engineering_source_vision.py",
+        "tests/test_data_engineering_sources_contracts.py",
+    ):
+        assert test_path in freeze_text
     assert "alpha_lab_contracts/**" in service_text
     assert '"alpha_lab_service/**"' in service_text
     assert '"data_engineering/**"' in service_text

@@ -81,6 +81,14 @@ jobs:
             alpha_lab/tests/ \
             alpha_lab/calibration/ \
             tests/test_data_engineering.py \
+            tests/test_data_engineering_catalog_v3.py \
+            tests/test_data_engineering_catalog_v3_cli.py \
+            tests/test_data_engineering_source_freqtrade.py \
+            tests/test_data_engineering_source_pipeline.py \
+            tests/test_data_engineering_source_publish.py \
+            tests/test_data_engineering_source_vision.py \
+            tests/test_data_engineering_source_cli.py \
+            tests/test_data_engineering_sources_contracts.py \
             tests/test_data_engineering_packaging.py \
             tests/test_cross_sectional_fundamental_runner.py \
             tests/test_fundamental_asof.py \

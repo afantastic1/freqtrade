@@ -18,7 +18,18 @@ SERVICE_FILES = (
 )
 SERVICE_V2_FILES = SERVICE_FILES + ("alpha_lab_contracts/",)
 SERVICE_V3_FILES = SERVICE_V2_FILES + (
-    "data_engineering/",
+    "data_engineering/catalog.py", "data_engineering/catalog_v3.py",
+    "data_engineering/coverage.py", "data_engineering/data_kind_registry.py",
+    "data_engineering/dataset_coverage.py", "data_engineering/freqtrade_feather.py",
+    "data_engineering/sources/", "data_engineering/quality/", "data_engineering/schemas/",
+    "tests/test_data_engineering_catalog_v3.py",
+    "tests/test_data_engineering_catalog_v3_cli.py",
+    "tests/test_data_engineering_source_freqtrade.py",
+    "tests/test_data_engineering_source_pipeline.py",
+    "tests/test_data_engineering_source_publish.py",
+    "tests/test_data_engineering_source_vision.py",
+    "tests/test_data_engineering_source_cli.py",
+    "tests/test_data_engineering_sources_contracts.py",
     "alpha_lab/", "docs/alpha_lab/dynamic_dataset_builder_acceptance.md",
     "docs/alpha_lab/python-factor-execution-protocol-v2.md",
     "docs/alpha_lab/python-factor-service-v2-acceptance.md",

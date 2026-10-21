@@ -2,7 +2,7 @@
   "engine_version": "1.1.0-rc1",
   "files": {
     ".github/CODEOWNERS": "66440dc09549ce4d9ea1ecd0c5234b1c17ea7fcce49b55ef9bb31aebafd3fee5",
-    ".github/workflows/alpha-lab-freeze.yml": "6a8cbc9f16d4272fb653d80b682a2c656e51708ed426007edb42f71ee0f0015b",
+    ".github/workflows/alpha-lab-freeze.yml": "484c67f2ba6987f03370bb3a4bbc3e97670af83c068c19e92a7da29cb5c561f2",
     ".opencode/agents/alpha-researcher.md": "b9886b5d8ea95fe84fd4d2d0553642f20becd434f514fffa2bd88e8757a5fa74",
     ".opencode/skills/alpha-research/SKILL.md": "8f077794dd06aac832962e252fee786868de92480d81b2e8ff38b7cce656545c",
     "alpha_lab/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",

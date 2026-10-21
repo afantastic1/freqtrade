@@ -1,11 +1,11 @@
 {
   "files": {
     ".github/CODEOWNERS": "66440dc09549ce4d9ea1ecd0c5234b1c17ea7fcce49b55ef9bb31aebafd3fee5",
-    ".github/workflows/alpha-lab-freeze.yml": "6a8cbc9f16d4272fb653d80b682a2c656e51708ed426007edb42f71ee0f0015b",
+    ".github/workflows/alpha-lab-freeze.yml": "484c67f2ba6987f03370bb3a4bbc3e97670af83c068c19e92a7da29cb5c561f2",
     ".github/workflows/alpha-lab-python-service.yml": "b43cdfec4b7efb6dac8561ba7bc0a268eddfb8ddb826d6c769f59b7f2445a65a",
-    "alpha_lab/freeze-manifest-core-v1.2.json": "df31135287602a96e899395379089956ca8ed3b0d54b84e6c20cf82800da832b",
+    "alpha_lab/freeze-manifest-core-v1.2.json": "5f9dee2fabaee7155af332c960f7927bb257cccb6662ccb3dee157a576714696",
     "alpha_lab_service/governance.py": "fa4f24323f0495219ffeca6e4e2650581db4683dedeb1dfb959fc81796ab292d",
-    "alpha_lab_service/manifest.py": "eb55d3bf90080ca253742145c80db37e823dce9952a4bf78ca9d48c1763bade9",
+    "alpha_lab_service/manifest.py": "3849c9d7620d38761b7875d10a3746529f59c9a214a64868a0dba68e620c8472",
     "alpha_lab_service/protected-files.json": "4a63e17275a4517bd75bf38dcc2152c6494dc58324ef1b7cd762f3caec6f43b8",
     "scripts/alpha_lab_admission_gate.py": "04fc6f1564a0ed32ec73a06adbe688b6dd2c514a59c27d22f2749e005d464332"
   },
