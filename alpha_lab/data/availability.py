@@ -196,6 +196,11 @@ def asof_join(
         raise ValueError("UNVERIFIED observations cannot enter worker view")
     left[decision_time] = _utc_series(left[decision_time], decision_time)
     right["available_time"] = _utc_series(right.available_time, "available_time")
+    # Availability evidence may carry microsecond resolution while market
+    # panels come from nanosecond date ranges. merge_asof requires identical
+    # datetime units, so normalize both keys without changing any timestamp.
+    left[decision_time] = left[decision_time].astype("datetime64[ns, UTC]")
+    right["available_time"] = right["available_time"].astype("datetime64[ns, UTC]")
     if right.available_time.isna().any():
         raise ValueError("UNVERIFIED observations cannot enter worker view")
     left = left.sort_values(decision_time)

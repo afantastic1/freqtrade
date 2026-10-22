@@ -48,7 +48,7 @@ def test_factory_builds_trusted_v2_and_agent_dependencies_from_private_config(tm
     assert services.v2_service is not None
     assert services.v2_service.store.path == Path(_config(tmp_path)["research_store_path"])
     assert services.v2_service.worker_identity == (
-        "sha256:bb2aced00809732898f7c62c4a525af71beebc1190d60ba78c0924ee5862119f"
+        "sha256:f644ff108e2f5d7b59f570a2bb289019bd637c8939b6d66738eceece69621a35"
     )
     assert services.agent_gateway.isolation_verifier is not None
 

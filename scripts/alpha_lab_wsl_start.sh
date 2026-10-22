@@ -9,7 +9,7 @@ SECRET_DIR="$RUN_DIR/secrets"
 CATALOG_ROOT="${ALPHA_LAB_CATALOG_ROOT:-/tmp/alpha-lab-pr09/catalog-v3}"
 NORMALIZED_ROOT="${ALPHA_LAB_NORMALIZED_ROOT:-/tmp/alpha-lab-pr09/normalized}"
 FREQTRADE_DATADIR="${ALPHA_LAB_FREQTRADE_DATADIR:-$ROOT/user_data/data/binance}"
-WORKER_IMAGE="sha256:bb2aced00809732898f7c62c4a525af71beebc1190d60ba78c0924ee5862119f"
+WORKER_IMAGE="sha256:f644ff108e2f5d7b59f570a2bb289019bd637c8939b6d66738eceece69621a35"
 SERVICE_IMAGE="alpha-lab-local-service:my-dev"
 MCP_CONTAINER="alpha-lab-mcp"
 BROKER_PID_FILE="$RUN_DIR/broker.pid"
@@ -89,14 +89,23 @@ if [[ -f "$BROKER_PID_FILE" ]] && kill -0 "$(<"$BROKER_PID_FILE")" 2>/dev/null; 
     echo "A broker process is already recorded at $BROKER_PID_FILE." >&2
     exit 2
 fi
+if (echo > /dev/tcp/127.0.0.1/8765) >/dev/null 2>&1; then
+    echo "Port 8765 is already in use by an unmanaged Broker process; stop it before starting." >&2
+    exit 2
+fi
 rm -f "$BROKER_PID_FILE"
+
+BROKER_PYTHON="$ROOT/alpha_lab_service/.venv/bin/python"
+if [[ ! -x "$BROKER_PYTHON" ]]; then
+    echo "The Alpha Lab service virtualenv is missing; run uv sync first." >&2
+    exit 2
+fi
 
 (
     cd "$ROOT"
     export PYTHONPATH="$ROOT"
     export ALPHA_LAB_BROKER_TOKEN="$BROKER_TOKEN"
-    exec uv run --locked --project "$ROOT/alpha_lab_service" \
-        python -m alpha_lab_service.broker_server \
+    exec "$BROKER_PYTHON" -m alpha_lab_service.broker_server \
         --profile "$ROOT/containers/alpha-lab-factor-worker/profile.json" \
         --host 127.0.0.1 --port 8765
 ) >"$BROKER_LOG" 2>&1 &
@@ -106,6 +115,9 @@ trap cleanup_on_failure EXIT
 
 broker_ready=0
 for _ in $(seq 1 240); do
+    if ! kill -0 "$STARTED_BROKER_PID" 2>/dev/null; then
+        break
+    fi
     if (echo > /dev/tcp/127.0.0.1/8765) >/dev/null 2>&1; then
         broker_ready=1
         break

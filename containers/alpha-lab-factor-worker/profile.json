@@ -1,7 +1,7 @@
 {
   "protocol_versions": ["1.0", "2.0"],
   "base_image": "python:3.11.10-slim-bookworm@sha256:840e180ebcc6e5c8efab209c43f5e40fd2af98cb49db5c7103c90539c56bb30e",
-  "worker_image": "sha256:bb2aced00809732898f7c62c4a525af71beebc1190d60ba78c0924ee5862119f",
+  "worker_image": "sha256:f644ff108e2f5d7b59f570a2bb289019bd637c8939b6d66738eceece69621a35",
   "network": "none",
   "user": "65532:65532",
   "capabilities": "drop-all",

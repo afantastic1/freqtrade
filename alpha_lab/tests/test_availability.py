@@ -42,6 +42,18 @@ def test_asof_enforces_event_max_age():
     assert pd.isna(asof_join(decisions, events, decision_time="decision_time", max_age=pd.Timedelta("1h")).value.iloc[0])
 
 
+def test_asof_accepts_mixed_timestamp_resolutions():
+    decisions = pd.DataFrame({"decision_time": pd.to_datetime(["2025-01-01T00:05:00Z"], utc=True)})
+    events = pd.DataFrame({
+        "event_time": pd.to_datetime(["2025-01-01T00:00:00Z"], utc=True),
+        "available_time": pd.to_datetime(["2025-01-01T00:01:00Z"], utc=True),
+        "value": [2],
+    })
+    events["available_time"] = events["available_time"].astype("datetime64[us, UTC]")
+    joined = asof_join(decisions, events, decision_time="decision_time")
+    assert joined.value.iloc[0] == 2
+
+
 def test_unverified_event_is_rejected_from_worker_view():
     rule = AvailabilityRuleV1("source", IDENTITY, mode="source_evidence", event_time_field="date")
     frame = pd.DataFrame({"date": pd.to_datetime(["2025-01-01T00:00:00Z"], utc=True)})

@@ -10,7 +10,7 @@ from alpha_lab.cross_sectional_store import CrossSectionalStore, canonical_json
 from alpha_lab.cross_sectional_features import build_features, validate_feature_specs
 from alpha_lab.data.cross_sectional_dataset import CrossSectionalDataset
 from alpha_lab.data.market_panel import MarketPanel
-from alpha_lab.data.universe import DynamicUniverse, FixedUniverse
+from alpha_lab.data.universe import DynamicUniverse, FixedUniverse, HistoricalUniverse
 from alpha_lab.evaluation.cross_sectional import (
     relative_momentum, relative_volatility, relative_volume,
 )
@@ -138,6 +138,15 @@ def _universe(spec: dict):
     if spec.get("kind") == "dynamic" and set(spec) == {"kind", "id", "symbols", "lookback", "min_listing_bars", "min_coverage", "min_quote_volume"}:
         return DynamicUniverse(spec["id"], tuple(spec["symbols"]), spec["lookback"],
                                spec["min_listing_bars"], spec["min_coverage"], spec["min_quote_volume"])
+    if spec.get("kind") == "historical" and set(spec) == {"kind", "id", "listings"}:
+        # `listings` arrives from JSON as ISO strings; HistoricalUniverse requires a
+        # timezone-aware `eligible_from`, so normalise here rather than inside the
+        # universe class (which must stay a plain value object).
+        listings = pd.DataFrame(spec["listings"])
+        if not {"symbol", "eligible_from"} <= set(listings.columns):
+            raise ValueError("historical universe requires symbol and eligible_from")
+        listings["eligible_from"] = pd.to_datetime(listings["eligible_from"], utc=True)
+        return HistoricalUniverse(spec["id"], listings)
     raise ValueError("unsupported universe definition")
 
 

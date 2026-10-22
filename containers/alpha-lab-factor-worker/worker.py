@@ -146,25 +146,35 @@ V2_MAX_FRAME_BYTES = 16 * 1024 * 1024
 V2_MAX_OUTPUT_BYTES = 4 * 1024 * 1024
 V2_MAX_STEPS = 512
 V2_MAX_STATE_BYTES = 1024 * 1024
+# Must mirror alpha_lab_service/input_schemas_v2.py exactly. The service is the
+# single source of truth for column names; this standalone Worker image cannot
+# import it, so the registry is duplicated here and pinned by the image digest.
 V2_ALLOWED_FIELDS = {
     "open_time", "close_time", "available_time", "decision_time", "symbol", "eligible",
     "open", "high", "low", "close", "volume",
     "spot_ohlcv_open", "spot_ohlcv_high", "spot_ohlcv_low", "spot_ohlcv_close", "spot_ohlcv_volume",
     "spot_ohlcv_is_available", "futures_ohlcv_open", "futures_ohlcv_high", "futures_ohlcv_low",
     "futures_ohlcv_close", "futures_ohlcv_volume", "futures_ohlcv_is_available",
-    "spot_funding_rate", "spot_funding_rate_is_available", "futures_funding_rate",
-    "futures_funding_rate_is_available", "futures_open_interest", "futures_open_interest_is_available",
+    "spot_funding_rate_funding_rate", "spot_funding_rate_is_available",
+    "futures_funding_rate_funding_rate", "futures_funding_rate_is_available",
+    "futures_open_interest_open_interest_amount", "futures_open_interest_open_interest_value",
+    "futures_open_interest_is_available", "futures_mark_price_mark_price",
+    "futures_mark_price_is_available", "spot_perp_basis", "spot_perp_basis_absolute",
+    "spot_perp_basis_is_available",
 }
 V2_NUMERIC_FIELDS = {
     "open", "high", "low", "close", "volume", "spot_ohlcv_open", "spot_ohlcv_high",
     "spot_ohlcv_low", "spot_ohlcv_close", "spot_ohlcv_volume", "futures_ohlcv_open",
     "futures_ohlcv_high", "futures_ohlcv_low", "futures_ohlcv_close", "futures_ohlcv_volume",
-    "spot_funding_rate", "futures_funding_rate", "futures_open_interest",
+    "spot_funding_rate_funding_rate", "futures_funding_rate_funding_rate",
+    "futures_open_interest_open_interest_amount", "futures_open_interest_open_interest_value",
+    "futures_mark_price_mark_price", "spot_perp_basis", "spot_perp_basis_absolute",
 }
 V2_BOOLEAN_FIELDS = {
     "eligible", "spot_ohlcv_is_available", "futures_ohlcv_is_available",
     "spot_funding_rate_is_available", "futures_funding_rate_is_available",
-    "futures_open_interest_is_available",
+    "futures_open_interest_is_available", "futures_mark_price_is_available",
+    "spot_perp_basis_is_available",
 }
 
 

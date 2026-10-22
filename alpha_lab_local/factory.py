@@ -160,6 +160,31 @@ def _load_config() -> RuntimeConfig:
     return RuntimeConfig.from_file(path)
 
 
+# The Worker frames are canonical JSON, so a chunk's bytes scale with
+# `steps * lookback_bars * symbols`. The frozen service cap is 512 steps per
+# chunk, which only fits a small cross-section: at the measured 349 B/row a
+# 50-symbol universe with lookback 48 fits ~20 steps. `plan_chunks` puts
+# `chunk_size` in `plan_hash` but NOT in `identity_hash`, so lowering this value
+# changes only the chunk plan and never invalidates research identity or
+# previously recorded Evidence.
+_MAX_STEPS_PER_CHUNK_CEILING = 512
+
+
+def _max_steps_per_chunk() -> int:
+    raw = os.environ.get("ALPHA_LAB_MAX_STEPS_PER_CHUNK", "").strip()
+    if not raw:
+        return _MAX_STEPS_PER_CHUNK_CEILING
+    try:
+        value = int(raw)
+    except ValueError as error:
+        raise ValueError("ALPHA_LAB_MAX_STEPS_PER_CHUNK must be an integer") from error
+    if not 1 <= value <= _MAX_STEPS_PER_CHUNK_CEILING:
+        raise ValueError(
+            f"ALPHA_LAB_MAX_STEPS_PER_CHUNK must be between 1 and "
+            f"{_MAX_STEPS_PER_CHUNK_CEILING}")
+    return value
+
+
 def _check_private_state(config: RuntimeConfig) -> None:
     state_root = config.research_store_path.parent
     if state_root.is_symlink() or not state_root.is_dir():
@@ -234,6 +259,7 @@ def create():
         policy_registry=policy_registry, dataset_builder=builder,
         dataset_options=dataset_options, worker_identity=profile.image,
         evaluator_identity="alpha-lab-descriptive-v2",
+        max_steps_per_chunk=_max_steps_per_chunk(),
     )
     agent_gateway = AgentResearchGatewayV2(
         request_registry=request_registry, coverage_gateway=coverage,
