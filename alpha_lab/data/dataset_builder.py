@@ -49,6 +49,38 @@ def _missing_decisions(source, request, step):
     return expected.difference(observed)
 
 
+def _add_spot_perp_basis(frame: pd.DataFrame, primary: str, data_types) -> pd.DataFrame:
+    """Add PIT-aligned premium/discount columns when both markets were requested."""
+    if not {"spot_ohlcv", "futures_ohlcv"}.issubset(data_types):
+        return frame
+    result = frame.copy(deep=True)
+    spot = "close" if primary == "spot_ohlcv" else "spot_ohlcv_close"
+    perp = "close" if primary == "futures_ohlcv" else "futures_ohlcv_close"
+    spot_available = (result.get("spot_ohlcv_is_available", True)
+                      if primary != "spot_ohlcv" else result["close"].notna())
+    perp_available = (result.get("futures_ohlcv_is_available", True)
+                      if primary != "futures_ohlcv" else result["close"].notna())
+    valid = result[spot].notna() & result[perp].notna() & spot_available & perp_available
+    result["spot_perp_basis"] = ((result[perp] / result[spot]) - 1.0).where(valid)
+    result["spot_perp_basis_absolute"] = (result[perp] - result[spot]).where(valid)
+    result["spot_perp_basis_is_available"] = valid.astype(bool)
+    return result
+
+
+def _worker_value_columns(identity, observations: pd.DataFrame | None = None) -> tuple[str, ...]:
+    if identity.data_kind == "ohlcv":
+        return ("open", "high", "low", "close", "volume")
+    if identity.data_kind == "open_interest":
+        available = set(observations.columns) if observations is not None else set()
+        return tuple(name for name in ("open_interest_amount", "open_interest_value")
+                     if name in available) or ("open_interest_amount", "open_interest_value")
+    if identity.data_kind == "funding_rate":
+        return ("funding_rate",)
+    if identity.data_kind == "mark_price":
+        return ("mark_price",)
+    raise ValueError("data kind has no registered Worker value-column contract")
+
+
 class DatasetBuilderV2:
     def __init__(self, policy_registry: CampaignPolicyRegistry, resolver: DatasetSourceResolver,
                  availability_registry: AvailabilityRuleRegistry, output_root: Path):
@@ -131,7 +163,7 @@ class DatasetBuilderV2:
             auxiliary = next((source for source in sources if source.identity == identity), None)
             if auxiliary is None:
                 prefix = f"{identity.market_type}_{identity.data_kind}_"
-                columns = ("open", "high", "low", "close", "volume") if identity.data_kind == "ohlcv" else (identity.data_kind,)
+                columns = _worker_value_columns(identity)
                 for column in columns:
                     worker_frame[prefix + column] = pd.NA
                 worker_frame[prefix + "is_available"] = False
@@ -148,11 +180,12 @@ class DatasetBuilderV2:
                                          "decision_rows": int((~source_available).sum())})
             if options.missing_data_policy == "reject" and not source_available.all():
                 raise ValueError(f"auxiliary source has unavailable or stale rows: {data_type}")
-            extra = joined.drop(columns=["decision_time", "available_time"], errors="ignore")
+            extra = joined.loc[:, list(_worker_value_columns(identity, auxiliary.observations))].copy()
             prefix = f"{identity.market_type}_{identity.data_kind}_"
             extra = extra.rename(columns={column: prefix + column for column in extra.columns})
             extra[prefix + "is_available"] = source_available.to_numpy()
             worker_frame = pd.concat([worker_frame.reset_index(drop=True), extra.reset_index(drop=True)], axis=1)
+        worker_frame = _add_spot_perp_basis(worker_frame, primary, request.data_types)
         labels = forward_returns_v2(market, horizon=request.label_horizon_bars)
         labels = labels.loc[study].copy()
         labels = labels.rename(columns={"reference_return": "label_value"})
@@ -236,7 +269,7 @@ class DatasetBuilderV2:
                 auxiliary = next((item for item in sources if item.identity == aux_identity), None)
                 if auxiliary is None:
                     prefix = f"{aux_identity.market_type}_{aux_identity.data_kind}_"
-                    columns = ("open", "high", "low", "close", "volume") if aux_identity.data_kind == "ohlcv" else (aux_identity.data_kind,)
+                    columns = _worker_value_columns(aux_identity)
                     for column in columns:
                         frame[prefix + column] = pd.NA
                     frame[prefix + "is_available"] = False
@@ -255,11 +288,12 @@ class DatasetBuilderV2:
                                              "decision_rows": int((~source_available & required_rows).sum())})
                 if options.missing_data_policy == "reject" and not required_available.loc[required_rows].all():
                     raise ValueError(f"auxiliary source has unavailable or stale rows: {data_type}")
-                extra = joined.drop(columns=["decision_time", "available_time"], errors="ignore")
+                extra = joined.loc[:, list(_worker_value_columns(aux_identity, auxiliary.observations))].copy()
                 prefix = f"{aux_identity.market_type}_{aux_identity.data_kind}_"
                 extra = extra.rename(columns={column: prefix + column for column in extra.columns})
                 extra[prefix + "is_available"] = source_available.to_numpy()
                 frame = pd.concat([frame.reset_index(drop=True), extra.reset_index(drop=True)], axis=1)
+            frame = _add_spot_perp_basis(frame, primary, request.data_types)
             market = MarketData(symbol, request.timeframe, frame[[
                 "open_time", "close_time", "available_time", "open", "high", "low", "close", "volume",
             ] + [column for column in frame.columns if column.startswith(("spot_", "futures_"))]].sort_values("open_time").reset_index(drop=True))

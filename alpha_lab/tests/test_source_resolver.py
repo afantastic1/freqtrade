@@ -44,7 +44,12 @@ def test_resolver_requires_full_dataset_identity(monkeypatch):
 
 def test_resolver_maps_spot_futures_funding_and_oi_without_kind_aliasing():
     from alpha_lab.data.source_resolver import _TYPE
-    assert _TYPE == {"futures_ohlcv": ("futures", "ohlcv"), "spot_ohlcv": ("spot", "ohlcv"), "funding_rate": ("futures", "funding_rate"), "open_interest": ("futures", "open_interest")}
+    assert _TYPE == {
+        "futures_ohlcv": ("futures", "ohlcv"), "spot_ohlcv": ("spot", "ohlcv"),
+        "funding_rate": ("futures", "funding_rate"),
+        "open_interest": ("futures", "open_interest"),
+        "mark_price": ("futures", "mark_price"),
+    }
 
 
 def test_resolver_revalidates_exact_snapshot_pin(monkeypatch):

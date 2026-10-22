@@ -78,6 +78,23 @@ def test_cross_sectional_evaluator_reports_quantiles_asset_counts_and_stability(
     assert result["formal_inference_status"] == "BLOCKED"
 
 
+def test_cross_sectional_labels_align_on_decision_time_when_open_time_is_also_present():
+    timestamps = pd.date_range("2025-01-01", periods=8, freq="D", tz="UTC")
+    symbols = [f"A{i}" for i in range(5)]
+    run = _evaluation_run("cross_sectional", timestamps, symbols)
+    labels = run.dataset.evaluator_labels.frame
+    labels["open_time"] = labels["decision_time"] - pd.Timedelta(minutes=5)
+    run.dataset.evaluator_labels.frame = labels
+    index = pd.MultiIndex.from_product([timestamps, symbols], names=["open_time", "symbol"])
+    factor = pd.Series(list(range(5)) * len(timestamps), index=index, dtype=float)
+
+    result = evaluate_v2(factor, run, identity="cs-decision-time")
+
+    assert result["status"] == "EXPLORATORY"
+    assert result["metrics"]["coverage"]["valid_rows"] == 40
+    assert result["metrics"]["effective_cross_sections"] == 8
+
+
 @pytest.mark.parametrize("mode", ["time_series", "cross_sectional"])
 def test_sparse_or_constant_inputs_return_stable_not_evaluable_reason(mode):
     timestamps = pd.date_range("2025-01-01", periods=2, freq="D", tz="UTC")

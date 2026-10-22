@@ -11,7 +11,10 @@ MIN_VALID_CROSS_SECTIONS = 2
 
 def _labels(run, expected: pd.MultiIndex) -> pd.Series:
     frame = run.dataset.evaluator_labels.frame.copy()
-    time_column = "open_time" if "open_time" in frame else "decision_time"
+    # Worker outputs are scheduled at decision_time (the PIT cutoff), while
+    # open_time is the candle's start. Prefer the explicit decision timestamp
+    # when both are present so the exact authorized schedule aligns with labels.
+    time_column = "decision_time" if "decision_time" in frame else "open_time"
     if time_column not in frame or "label_value" not in frame:
         raise ValueError("trusted evaluator labels lack timestamp or label_value")
     if "symbol" not in frame:

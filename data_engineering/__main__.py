@@ -8,8 +8,10 @@ import sys
 
 from .catalog import export_market, publish, verify
 from .catalog_v3 import get_coverage, list_datasets, validate_dataset
+from .catalog_inventory import audit_targets
 from .defillama import fetch_chain_tvl, normalize_chain_tvl
 from .freqtrade_feather import discover_feather_datasets, register_feather_file
+from .local_import import import_freqtrade_directory
 from .pit_audit import build_pit_audit, render_markdown
 
 DEFAULT_ROOT = Path("user_data/data_engineering")
@@ -110,6 +112,27 @@ def main(argv=None) -> int:
     v3_validate.add_argument("--dataset-id", required=True)
     v3_validate.add_argument("--source-root", action="append", default=[], metavar="ID=PATH")
 
+    v3_audit = v3_sub.add_parser(
+        "audit", help="Read-only target inventory for data expansion planning"
+    )
+    v3_audit.add_argument("--targets", type=Path, required=True)
+    v3_audit.add_argument("--source-root", action="append", default=[], metavar="ID=PATH")
+
+    v3_import = v3_sub.add_parser(
+        "import-local", help="Idempotently register existing Freqtrade Feather datasets"
+    )
+    v3_import.add_argument("--datadir", type=Path, required=True)
+    v3_import.add_argument("--source-root-id", required=True)
+    v3_import.add_argument("--existing-source-root", action="append", default=[], metavar="ID=PATH")
+    v3_import.add_argument("--exchange", default="binance")
+    v3_import.add_argument("--asset", action="append")
+    v3_import.add_argument("--market-type", action="append", choices=("spot", "futures"))
+    v3_import.add_argument("--timeframe", action="append")
+    v3_import.add_argument(
+        "--data-kind", action="append",
+        choices=("ohlcv", "funding_rate", "open_interest", "mark_price"),
+    )
+
     args = p.parse_args(argv)
     if args.command == "inventory":
         # Metadata only; do not read mixed-year Feather contents.
@@ -170,6 +193,19 @@ def main(argv=None) -> int:
             response = get_coverage(
                 args.root, args.dataset_id, args.start, args.end,
                 source_roots=_source_roots(args.source_root),
+            )
+        elif args.v3_command == "audit":
+            target_document = json.loads(args.targets.read_text(encoding="utf-8"))
+            response = audit_targets(
+                args.root, _source_roots(args.source_root), target_document
+            )
+        elif args.v3_command == "import-local":
+            response = import_freqtrade_directory(
+                args.root, args.datadir, source_root_id=args.source_root_id,
+                exchange=args.exchange, assets=args.asset,
+                market_types=args.market_type, timeframes=args.timeframe,
+                data_kinds=args.data_kind,
+                existing_source_roots=_source_roots(args.existing_source_root),
             )
         else:
             raise AssertionError(args.v3_command)

@@ -68,12 +68,18 @@ _AUX_FIELDS = {
     **{f"futures_ohlcv_{name}": _field(f"futures_ohlcv_{name}", "number", unit, "futures_ohlcv")
        for name, unit in {"open": "price", "high": "price", "low": "price", "close": "price", "volume": "base-volume"}.items()},
     "futures_ohlcv_is_available": _field("futures_ohlcv_is_available", "boolean", "availability", "futures_ohlcv"),
-    "spot_funding_rate": _field("spot_funding_rate", "number", "rate", "funding_rate"),
+    "spot_funding_rate_funding_rate": _field("spot_funding_rate_funding_rate", "number", "rate", "funding_rate"),
     "spot_funding_rate_is_available": _field("spot_funding_rate_is_available", "boolean", "availability", "funding_rate"),
-    "futures_funding_rate": _field("futures_funding_rate", "number", "rate", "funding_rate"),
+    "futures_funding_rate_funding_rate": _field("futures_funding_rate_funding_rate", "number", "rate", "funding_rate"),
     "futures_funding_rate_is_available": _field("futures_funding_rate_is_available", "boolean", "availability", "funding_rate"),
-    "futures_open_interest": _field("futures_open_interest", "number", "contracts", "open_interest"),
+    "futures_open_interest_open_interest_amount": _field("futures_open_interest_open_interest_amount", "number", "contracts", "open_interest"),
+    "futures_open_interest_open_interest_value": _field("futures_open_interest_open_interest_value", "number", "quote-value", "open_interest"),
     "futures_open_interest_is_available": _field("futures_open_interest_is_available", "boolean", "availability", "open_interest"),
+    "futures_mark_price_mark_price": _field("futures_mark_price_mark_price", "number", "price", "mark_price"),
+    "futures_mark_price_is_available": _field("futures_mark_price_is_available", "boolean", "availability", "mark_price"),
+    "spot_perp_basis": _field("spot_perp_basis", "number", "perp/spot-1", "spot_ohlcv+futures_ohlcv"),
+    "spot_perp_basis_absolute": _field("spot_perp_basis_absolute", "number", "price-difference", "spot_ohlcv+futures_ohlcv"),
+    "spot_perp_basis_is_available": _field("spot_perp_basis_is_available", "boolean", "availability", "spot_ohlcv+futures_ohlcv"),
 }
 _OHLVC_SCHEMA = WorkerInputSchemaV1("ohlcv-v1", "1", {**_CORE_FIELDS, **_OHLCV_FIELDS, **_AUX_FIELDS})
 INPUT_SCHEMA_REGISTRY = WorkerInputSchemaRegistryV1({("ohlcv-v1", "1"): _OHLVC_SCHEMA})

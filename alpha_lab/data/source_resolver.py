@@ -32,6 +32,7 @@ class ResolvedSourceV1:
 _TYPE = {
     "futures_ohlcv": ("futures", "ohlcv"), "spot_ohlcv": ("spot", "ohlcv"),
     "funding_rate": ("futures", "funding_rate"), "open_interest": ("futures", "open_interest"),
+    "mark_price": ("futures", "mark_price"),
 }
 
 
@@ -61,7 +62,7 @@ class DatasetSourceResolver:
         return DatasetIdentity(
             exchange=self.exchange, market_type=market_type, asset=mapped["asset"],
             exchange_symbol=mapped["exchange_symbol"], data_kind=data_kind,
-            timeframe=timeframe if data_kind == "ohlcv" else mapped.get("timeframe", timeframe),
+            timeframe=timeframe if data_kind in {"ohlcv", "mark_price"} else None,
         )
 
     def resolve(self, request: ResearchRequestV2, plan: TemporalPlanV1, options: DatasetBuildOptionsV1) -> tuple[ResolvedSourceV1, ...]:

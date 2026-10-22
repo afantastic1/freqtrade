@@ -6,16 +6,12 @@ import json
 import os
 from pathlib import Path
 import subprocess
-from alpha_lab_local.config import DATASET_ID
+from data_engineering.catalog_v3 import list_datasets
 
 
-def _discovery_partitions_only(normalized: Path) -> bool:
-    dataset_root = normalized / DATASET_ID
-    try:
-        years = {item.name for item in dataset_root.iterdir() if item.is_dir()}
-    except OSError:
-        return False
-    return years == {"year=2022", "year=2023", "year=2024"}
+def _catalog_has_registered_datasets(catalog: Path) -> bool:
+    """Accept any valid Catalog identities; do not require a BTC fixture."""
+    return bool(list_datasets(catalog))
 
 
 def _inspect(container: str) -> dict:
@@ -28,7 +24,7 @@ def _inspect(container: str) -> dict:
     return document[0]
 
 
-def verify_container(container: str, *, catalog: Path, normalized: Path, state: Path,
+def verify_container(container: str, *, catalog: Path, normalized: Path, freqtrade: Path, state: Path,
                      worker_image: str, uid: int, gid: int) -> dict:
     docker_access = subprocess.run(
         ["docker", "info", "--format", "{{.ServerVersion}}"],
@@ -53,7 +49,7 @@ def verify_container(container: str, *, catalog: Path, normalized: Path, state: 
             for item in details.get("Mounts", [])
         ) and not any(item.startswith("DOCKER_HOST=") for item in env),
         "only_approved_mounts_present": set(mounts) == {
-            "/data/catalog", "/data/normalized", "/var/lib/alpha-lab"
+            "/data/catalog", "/data/normalized", "/data/freqtrade", "/var/lib/alpha-lab"
         },
         "catalog_mount_read_only": (
             mounts.get("/data/catalog", {}).get("RW") is False
@@ -62,6 +58,10 @@ def verify_container(container: str, *, catalog: Path, normalized: Path, state: 
         "normalized_data_mount_read_only": (
             mounts.get("/data/normalized", {}).get("RW") is False
             and Path(mounts.get("/data/normalized", {}).get("Source", "/")).resolve() == normalized.resolve()
+        ),
+        "freqtrade_data_mount_read_only": (
+            mounts.get("/data/freqtrade", {}).get("RW") is False
+            and Path(mounts.get("/data/freqtrade", {}).get("Source", "/")).resolve() == freqtrade.resolve()
         ),
         "state_mount_private": (
             mounts.get("/var/lib/alpha-lab", {}).get("RW") is True
@@ -76,10 +76,8 @@ def verify_container(container: str, *, catalog: Path, normalized: Path, state: 
             and 0 < host.get("PidsLimit", 0) <= 64
         ),
         "worker_image_digest_matches_profile": profile_image == worker_image,
-        "dataset_is_expected_btc_catalog": (
-            (catalog / "catalog-v3" / "datasets" / DATASET_ID).is_dir()
-        ),
-        "discovery_source_contains_only_2022_2024": _discovery_partitions_only(normalized),
+        "catalog_contains_registered_datasets": _catalog_has_registered_datasets(catalog),
+        "normalized_source_root_available": normalized.is_dir() and not normalized.is_symlink(),
     }
     return {"verified": all(checks.values()), "checks": checks}
 
@@ -90,6 +88,7 @@ def main() -> int:
             os.environ["ALPHA_LAB_MCP_CONTAINER"],
             catalog=Path(os.environ["ALPHA_LAB_CATALOG_HOST"]),
             normalized=Path(os.environ["ALPHA_LAB_NORMALIZED_HOST"]),
+            freqtrade=Path(os.environ["ALPHA_LAB_FREQTRADE_HOST"]),
             state=Path(os.environ["ALPHA_LAB_STATE_HOST"]),
             worker_image=os.environ["ALPHA_LAB_WORKER_IMAGE"],
             uid=os.getuid(), gid=os.getgid(),

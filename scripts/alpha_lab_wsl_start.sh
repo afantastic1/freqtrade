@@ -8,6 +8,7 @@ STATE_DIR="$RUN_DIR/store"
 SECRET_DIR="$RUN_DIR/secrets"
 CATALOG_ROOT="${ALPHA_LAB_CATALOG_ROOT:-/tmp/alpha-lab-pr09/catalog-v3}"
 NORMALIZED_ROOT="${ALPHA_LAB_NORMALIZED_ROOT:-/tmp/alpha-lab-pr09/normalized}"
+FREQTRADE_DATADIR="${ALPHA_LAB_FREQTRADE_DATADIR:-$ROOT/user_data/data/binance}"
 WORKER_IMAGE="sha256:bb2aced00809732898f7c62c4a525af71beebc1190d60ba78c0924ee5862119f"
 SERVICE_IMAGE="alpha-lab-local-service:my-dev"
 MCP_CONTAINER="alpha-lab-mcp"
@@ -31,14 +32,24 @@ cleanup_on_failure() {
     fi
 }
 
-for required in "$CATALOG_ROOT/catalog-v3/datasets/binance-futures-btc-ohlcv-5m-6c7cb41c78f4" \
-                "$NORMALIZED_ROOT/binance-futures-btc-ohlcv-5m-6c7cb41c78f4"; do
+for required in "$CATALOG_ROOT/catalog-v3/datasets" "$NORMALIZED_ROOT"; do
     if [[ ! -d "$required" ]]; then
-        echo "Required BTC 5m Discovery Catalog/source directory is missing." >&2
-        echo "Set ALPHA_LAB_CATALOG_ROOT and ALPHA_LAB_NORMALIZED_ROOT to the existing read-only PR09 artifacts." >&2
+        echo "Required Alpha Lab Catalog/source directory is missing." >&2
+        echo "Set ALPHA_LAB_CATALOG_ROOT and ALPHA_LAB_NORMALIZED_ROOT to existing read-only data roots." >&2
         exit 2
     fi
 done
+
+if ! compgen -G "$CATALOG_ROOT/catalog-v3/datasets/*/*.json" >/dev/null; then
+    echo "The Alpha Lab Catalog has no registered dataset manifests." >&2
+    exit 2
+fi
+
+if [[ ! -d "$FREQTRADE_DATADIR" || ! -d "$FREQTRADE_DATADIR/futures" ]]; then
+    echo "Freqtrade local Spot/Futures data directory is missing: $FREQTRADE_DATADIR" >&2
+    echo "Set ALPHA_LAB_FREQTRADE_DATADIR to the existing local datadir; no download is performed." >&2
+    exit 2
+fi
 
 mkdir -p "$RUN_DIR" "$STATE_DIR" "$SECRET_DIR"
 chmod 700 "$RUN_DIR" "$STATE_DIR" "$SECRET_DIR"
@@ -62,13 +73,16 @@ docker image inspect "$WORKER_IMAGE" >/dev/null
 docker build -f "$ROOT/containers/alpha-lab-local-service/Dockerfile" -t "$SERVICE_IMAGE" "$ROOT"
 
 if docker inspect "$MCP_CONTAINER" >/dev/null 2>&1; then
+    label="$(docker inspect --format '{{index .Config.Labels "dev.freqtrade.alpha-lab-local"}}' "$MCP_CONTAINER")"
+    if [[ "$label" != "true" ]]; then
+        echo "Refusing to replace an unowned container named $MCP_CONTAINER." >&2
+        exit 2
+    fi
     state="$(docker inspect --format '{{.State.Status}}' "$MCP_CONTAINER")"
     if [[ "$state" == "running" ]]; then
-        echo "Alpha Lab MCP is already running."
-        exit 0
+        docker stop --time 30 "$MCP_CONTAINER" >/dev/null
     fi
-    echo "A stopped container named $MCP_CONTAINER exists; remove it before restarting." >&2
-    exit 2
+    docker rm "$MCP_CONTAINER" >/dev/null
 fi
 
 if [[ -f "$BROKER_PID_FILE" ]] && kill -0 "$(<"$BROKER_PID_FILE")" 2>/dev/null; then
@@ -126,6 +140,7 @@ docker run --detach --rm --name "$MCP_CONTAINER" \
     --tmpfs /tmp:rw,noexec,nosuid,nodev,size=64m \
     --mount "type=bind,source=$CATALOG_ROOT,target=/data/catalog,readonly" \
     --mount "type=bind,source=$NORMALIZED_ROOT,target=/data/normalized,readonly" \
+    --mount "type=bind,source=$FREQTRADE_DATADIR,target=/data/freqtrade,readonly" \
     --mount "type=bind,source=$STATE_DIR,target=/var/lib/alpha-lab" \
     --env-file "$MCP_ENV" "$SERVICE_IMAGE" >/dev/null
 
@@ -133,6 +148,7 @@ export PYTHONPATH="$ROOT"
 export ALPHA_LAB_MCP_CONTAINER="$MCP_CONTAINER"
 export ALPHA_LAB_CATALOG_HOST="$CATALOG_ROOT"
 export ALPHA_LAB_NORMALIZED_HOST="$NORMALIZED_ROOT"
+export ALPHA_LAB_FREQTRADE_HOST="$FREQTRADE_DATADIR"
 export ALPHA_LAB_STATE_HOST="$STATE_DIR"
 export ALPHA_LAB_WORKER_IMAGE="$WORKER_IMAGE"
 uv run --locked --project "$ROOT/alpha_lab_service" python -m alpha_lab_local.host_checks

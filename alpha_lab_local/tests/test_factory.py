@@ -25,8 +25,8 @@ def _config(root: Path) -> dict:
         "worker_profile_path": str(ROOT / "containers/alpha-lab-factor-worker/profile.json"),
         "broker_endpoint": "http://127.0.0.1:8765",
         "campaign_id": "dataset_builder_acceptance",
-        "policy_version": "1",
-        "campaign_policy_sha256": "b0b2ca3f678c991a1d104f9141ea4f8434bebd987638a5754878ed7c838aa61f",
+        "policy_version": "2",
+        "campaign_policy_sha256": "e42f7d34d03fe80c03fd09a771b97c90a5479cecb3e87463d5f1c5b6851404f2",
         "dataset_key": "binance:futures:BTC:ohlcv:5m",
     }
 
@@ -58,13 +58,13 @@ def test_factory_rejects_policy_or_catalog_widening(tmp_path):
 
     config = _config(tmp_path)
     config["campaign_id"] = "example_campaign"
-    with pytest.raises(ValueError, match="fixed BTC Discovery campaign"):
+    with pytest.raises(ValueError, match="pinned local data-expansion campaign"):
         RuntimeConfig.from_mapping(config)
 
     config = _config(tmp_path)
     config["dataset_registry"]["binance:futures:ETH:ohlcv:5m"] = "other-dataset"
-    with pytest.raises(ValueError, match="fixed BTC 5m Catalog"):
-        RuntimeConfig.from_mapping(config)
+    config["dataset_key"] = "binance:futures:ETH:ohlcv:5m"
+    assert RuntimeConfig.from_mapping(config).dataset_registry["binance:futures:ETH:ohlcv:5m"] == "other-dataset"
 
 
 def test_live_isolation_verifier_fails_closed_outside_verified_service_container(tmp_path):
@@ -92,24 +92,25 @@ def test_dataset_builder_rule_tracks_request_timeframe_without_a_5m_lock():
     from types import SimpleNamespace
 
     from alpha_lab.data.temporal_plan import DatasetBuildOptionsV1
-    from alpha_lab_local.factory import TimeframeDatasetBuilder
+    from alpha_lab_local.factory import RequestDatasetBuilder
 
     class CaptureBuilder:
         def build(self, request, *, options, universe=None):
             return options.availability_rule_ids
 
-    wrapper = TimeframeDatasetBuilder(CaptureBuilder())
+    wrapper = RequestDatasetBuilder(CaptureBuilder())
     options = DatasetBuildOptionsV1("reject", "futures_ohlcv", {}, {}, {})
 
-    result = wrapper.build(SimpleNamespace(timeframe="4h"), options=options)
+    result = wrapper.build(SimpleNamespace(timeframe="4h", mode="time_series", symbols=("BTCUSDT",),
+                                           data_types=("futures_ohlcv",)), options=options)
 
-    assert result == {"futures_ohlcv": "binance-close-plus-30s-4h"}
+    assert result == {"BTCUSDT:futures_ohlcv": "binance-close-plus-30s"}
 
 
-def test_coverage_gateway_does_not_query_catalog_outside_discovery():
+def test_coverage_gateway_allows_only_one_trusted_campaign_split():
     from alpha_lab_contracts.campaign_policy_v1 import FileCampaignPolicyRegistry
     from alpha_lab_local.config import CAMPAIGN_ID, POLICY_SHA256, POLICY_VERSION
-    from alpha_lab_local.factory import DiscoveryCoverageGateway
+    from alpha_lab_local.factory import CampaignSplitCoverageGateway
 
     class CoverageProbe:
         called = False
@@ -120,7 +121,7 @@ def test_coverage_gateway_does_not_query_catalog_outside_discovery():
 
     policy = FileCampaignPolicyRegistry().get(CAMPAIGN_ID, POLICY_VERSION, POLICY_SHA256)
     probe = CoverageProbe()
-    gateway = DiscoveryCoverageGateway(probe, policy)
+    gateway = CampaignSplitCoverageGateway(probe, policy)
 
     result = gateway.get_data_coverage(
         dataset_key="binance:futures:BTC:ohlcv:5m",
@@ -128,25 +129,43 @@ def test_coverage_gateway_does_not_query_catalog_outside_discovery():
         end="2026-01-02T00:00:00Z",
     )
 
+    assert result == {"status": "AVAILABLE"}
+    assert probe.called
+
+    probe.called = False
+    result = gateway.get_data_coverage(
+        dataset_key="binance:futures:BTC:ohlcv:5m",
+        start="2025-12-31T23:00:00Z",
+        end="2026-01-01T01:00:00Z",
+    )
     assert result == {
         "status": "AUTHORIZATION_DENIED",
-        "error_code": "OUTSIDE_DISCOVERY_CAMPAIGN",
+        "error_code": "OUTSIDE_AUTHORIZED_CAMPAIGN_SPLIT",
     }
     assert not probe.called
 
 
-def test_host_preflight_accepts_only_the_mounted_discovery_years(tmp_path):
-    from alpha_lab_local.config import DATASET_ID
-    from alpha_lab_local.host_checks import _discovery_partitions_only
+def test_catalog_preflight_accepts_registered_non_btc_data(tmp_path):
+    from alpha_lab_local.host_checks import _catalog_has_registered_datasets
+    import pandas as pd
+    from data_engineering.freqtrade_feather import register_feather_file
 
-    dataset = tmp_path / DATASET_ID
-    dataset.mkdir()
-    for year in (2022, 2023, 2024):
-        (dataset / f"year={year}").mkdir()
-    assert _discovery_partitions_only(tmp_path)
+    source_root = tmp_path / "source"
+    source_root.mkdir()
+    filename = "ETH_USDT-15m.feather"
+    pd.DataFrame({
+        "date": pd.to_datetime(["2025-01-01T00:00:00Z"], utc=True),
+        "open": [100.0], "high": [101.0], "low": [99.0],
+        "close": [100.5], "volume": [2.0],
+    }).to_feather(source_root / filename)
+    register_feather_file(
+        tmp_path, source_root_id="local", source_root=source_root,
+        relative_path=Path(filename), exchange="binance", market_type="spot",
+        asset="ETH", exchange_symbol="ETH/USDT", data_kind="ohlcv",
+        timeframe="15m", source="unit-test",
+    )
 
-    (dataset / "year=2026").mkdir()
-    assert not _discovery_partitions_only(tmp_path)
+    assert _catalog_has_registered_datasets(tmp_path)
 
 
 def test_factory_import_does_not_require_freqtrade_runtime_package():

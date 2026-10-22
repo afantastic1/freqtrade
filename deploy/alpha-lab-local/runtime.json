@@ -1,7 +1,9 @@
 {
   "catalog_root": "/data/catalog",
   "source_roots": {
-    "alpha-lab-normalized": "/data/normalized"
+    "alpha-lab-normalized": "/data/normalized",
+    "freqtrade-local-spot": "/data/freqtrade",
+    "freqtrade-local-futures": "/data/freqtrade/futures"
   },
   "dataset_registry": {
     "binance:futures:BTC:ohlcv:5m": "binance-futures-btc-ohlcv-5m-6c7cb41c78f4"
@@ -12,7 +14,7 @@
   "worker_profile_path": "/opt/freqtrade/containers/alpha-lab-factor-worker/profile.json",
   "broker_endpoint": "http://127.0.0.1:8765",
   "campaign_id": "dataset_builder_acceptance",
-  "policy_version": "1",
-  "campaign_policy_sha256": "b0b2ca3f678c991a1d104f9141ea4f8434bebd987638a5754878ed7c838aa61f",
+  "policy_version": "2",
+  "campaign_policy_sha256": "e42f7d34d03fe80c03fd09a771b97c90a5479cecb3e87463d5f1c5b6851404f2",
   "dataset_key": "binance:futures:BTC:ohlcv:5m"
 }

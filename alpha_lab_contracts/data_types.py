@@ -1,6 +1,6 @@
 """Stable identifiers for data sources accepted by contract protocols."""
 
-DATA_TYPE_IDS = frozenset({"futures_ohlcv", "spot_ohlcv", "funding_rate", "open_interest"})
+DATA_TYPE_IDS = frozenset({"futures_ohlcv", "spot_ohlcv", "funding_rate", "open_interest", "mark_price"})
 
 
 def is_data_type(value: str) -> bool:

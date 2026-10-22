@@ -16,7 +16,7 @@
     "symbols": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
     "timeframe": {"type": "string", "minLength": 1},
     "mode": {"enum": ["time_series", "cross_sectional"]},
-    "data_types": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["futures_ohlcv", "spot_ohlcv", "funding_rate", "open_interest"]}},
+    "data_types": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["futures_ohlcv", "spot_ohlcv", "funding_rate", "open_interest", "mark_price"]}},
     "split": {"enum": ["discovery", "validation", "holdout"]},
     "lookback_bars": {"type": "integer", "minimum": 1},
     "label_horizon_bars": {"type": "integer", "minimum": 1},

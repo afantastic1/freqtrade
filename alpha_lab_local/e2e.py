@@ -71,7 +71,7 @@ async def run_acceptance(endpoint: str, token: str, store_path: Path) -> dict:
                 "protocol_version": "2.0-research-request",
                 "request_id": f"alpha-local-btc-5m-{uuid.uuid4().hex}",
                 "campaign_id": "dataset_builder_acceptance",
-                "policy_version": "1",
+                "policy_version": "2",
                 "campaign_policy_sha256": POLICY_SHA256,
                 "start": "2024-01-01T00:00:00Z",
                 "end": "2024-01-08T00:00:00Z",

@@ -74,15 +74,17 @@ class DatasetIdentity:
     asset: str
     exchange_symbol: str
     data_kind: str
-    timeframe: str
+    timeframe: str | None
     schema_version: str = "v1"
 
     def __post_init__(self) -> None:
         for name in (
             "exchange", "market_type", "asset", "exchange_symbol",
-            "data_kind", "timeframe", "schema_version",
+            "data_kind", "schema_version",
         ):
             _validate_identity_text(getattr(self, name), name)
+        if self.timeframe is not None:
+            _validate_identity_text(self.timeframe, "timeframe")
 
     def dataset_id(self) -> str:
         """Return the PR-02 ID for v1, versioned when schema identity changes."""
